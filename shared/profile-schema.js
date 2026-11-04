@@ -213,6 +213,7 @@
     showWidget: true,          // floating in-page assistant on application pages
     resumeMode: 'auto',        // 'auto' attach saved | 'ask' choose per application | 'manual' never touch
     coverLetterMode: 'auto',   // 'auto' fill text boxes with saved letter | 'manual' leave to the user
+    dailyGoal: 10,             // applications/day target shown in the side panel
     knownAtsHosts: [
       'greenhouse.io', 'lever.co', 'myworkdayjobs.com', 'myworkdaysite.com', 'workday.com',
       'ashbyhq.com', 'smartrecruiters.com', 'icims.com', 'jobvite.com', 'bamboohr.com',

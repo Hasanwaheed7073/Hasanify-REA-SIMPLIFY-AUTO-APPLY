@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hasanify · Quick access</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <header class="top">
+    <img src="../icons/icon-32.png" width="22" height="22" alt="" />
+    <span class="brand">Hasanify</span>
+    <span class="spacer"></span>
+    <button class="icon-btn" id="openDashboard" title="Open dashboard" data-icon="gear"></button>
+  </header>
+
+  <main>
+    <!-- Daily counter -->
+    <section class="counter">
+      <div class="counter-line"><b id="appliedToday">0</b><span class="counter-word" id="appliedWord">Applications</span><span class="counter-of" id="goalText">out of 10 today</span></div>
+      <div class="bar"><i id="goalBar"></i></div>
+    </section>
+
+    <!-- Quick access -->
+    <h2 class="section">Quick Access</h2>
+    <div class="acc-group">
+      <details class="acc" id="accFill" open>
+        <summary><span class="acc-ico" data-icon="bolt"></span>Autofill this page<span class="chev"></span></summary>
+        <div class="acc-body">
+          <div class="page-line" id="pageLine">—</div>
+          <button class="btn primary" id="fillBtn" data-icon="bolt"><span>Autofill this page</span></button>
+          <div class="note" id="fillNote"></div>
+        </div>
+      </details>
+
+      <details class="acc" id="accSave">
+        <summary><span class="acc-ico" data-icon="bookmark"></span>Save Application<span class="chev"></span></summary>
+        <div class="acc-body">
+          <label class="field"><span>Job title</span><input id="saveTitle" placeholder="Software Engineer" /></label>
+          <label class="field"><span>Company</span><input id="saveCompany" placeholder="Company" /></label>
+          <div class="row2">
+            <button class="btn primary" id="markApplied" data-icon="check"><span>Mark as applied</span></button>
+            <button class="btn" id="saveLater" data-icon="bookmark"><span>Save for later</span></button>
+          </div>
+          <div class="note" id="saveNote"></div>
+          <div class="recent" id="recent"></div>
+        </div>
+      </details>
+
+      <details class="acc" id="accSettings">
+        <summary><span class="acc-ico" data-icon="sliders"></span>Autofill Settings<span class="chev"></span></summary>
+        <div class="acc-body">
+          <label class="switch-row"><span>Autofill on job sites</span><span class="switch"><input type="checkbox" data-setting="autoFillOnKnownATS" /><i></i></span></label>
+          <label class="switch-row"><span>Show on-page assistant</span><span class="switch"><input type="checkbox" data-setting="showWidget" /><i></i></span></label>
+          <label class="switch-row"><span>Overwrite existing values</span><span class="switch"><input type="checkbox" data-setting="overwriteExisting" /><i></i></span></label>
+          <label class="select-row"><span>Resume uploads</span>
+            <select data-setting="resumeMode"><option value="auto">Attach saved resume</option><option value="ask">Ask me each time</option><option value="manual">I upload it myself</option></select>
+          </label>
+          <label class="select-row"><span>Cover letters</span>
+            <select data-setting="coverLetterMode"><option value="auto">Use saved cover letter</option><option value="manual">I handle them myself</option></select>
+          </label>
+          <label class="select-row"><span>Daily goal</span>
+            <input type="number" min="1" max="200" data-setting="dailyGoal" />
+          </label>
+        </div>
+      </details>
+    </div>
+
+    <!-- Profile -->
+    <div class="section-row">
+      <h2 class="section">Profile</h2>
+      <button class="link" id="editProfile">Edit</button>
+    </div>
+
+    <div class="empty-card" id="emptyProfile" hidden>
+      Your application profile will be accessible here.
+      <button class="link-inline" id="createProfile">Click here to create your profile.</button>
+    </div>
+
+    <div id="profileArea" hidden>
+      <div class="sticky">
+        <div class="search"><span data-icon="search"></span><input type="search" id="search" placeholder="Search your profile…" autocomplete="off" spellcheck="false" /></div>
+        <div class="target" id="target"></div>
+      </div>
+      <div id="groups"></div>
+      <div class="no-match" id="noMatch" hidden></div>
+    </div>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="../shared/profile-schema.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

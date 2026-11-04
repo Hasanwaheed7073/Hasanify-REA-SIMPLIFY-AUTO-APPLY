@@ -1520,7 +1520,38 @@
       if (!el.matches(EDITABLE) && !el.isContentEditable) return;
       state.lastFocused = { el, at: Date.now() };
       emit('focus-target', {});
+      // Tell the extension (background records tab + frame; side panel shows "Insert into …").
+      const target = getFocusTarget();
+      if (target) chrome.runtime.sendMessage({ type: 'hasanify:focusTarget', label: target.label, at: state.lastFocused.at }).catch(() => {});
     }, true);
+  }
+
+  // ---- Page info for the side panel's "Save application" -------------------
+
+  const ATS_BY_HOST = [
+    [/greenhouse\.io/, 'Greenhouse'], [/lever\.co/, 'Lever'], [/myworkdayjobs|myworkdaysite|workday/, 'Workday'],
+    [/ashbyhq\.com/, 'Ashby'], [/smartrecruiters\.com/, 'SmartRecruiters'], [/icims\.com/, 'iCIMS'], [/jobvite\.com/, 'Jobvite'],
+    [/bamboohr\.com/, 'BambooHR'], [/taleo\.net/, 'Taleo'], [/workable\.com/, 'Workable'], [/linkedin\.com/, 'LinkedIn'], [/indeed\.com/, 'Indeed'],
+  ];
+  const titleCase = (s) => s.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).trim();
+
+  function getPageInfo() {
+    const host = location.hostname;
+    const path = location.pathname.split('/').filter(Boolean);
+    const ats = ATS_BY_HOST.find(([rx]) => rx.test(host))?.[1] ?? '';
+    const meta = (n) => document.querySelector(`meta[property="${n}"], meta[name="${n}"]`)?.content?.trim() ?? '';
+
+    // Company: ATS URL conventions first, then page metadata, then the domain.
+    let company = '';
+    if (/greenhouse\.io|lever\.co|ashbyhq\.com|smartrecruiters\.com|workable\.com|jobvite\.com/.test(host) && path[0]) company = titleCase(path[0]);
+    else if (/myworkdayjobs|myworkdaysite/.test(host)) company = titleCase(host.split('.')[0]);
+    else if (/bamboohr\.com/.test(host)) company = titleCase(host.split('.')[0]);
+    company ||= meta('og:site_name') || titleCase(siteOf(host).split('.')[0]);
+
+    const heading = document.querySelector('h1, [data-automation-id="jobPostingHeader"], .posting-headline h2, [class*="job-title" i]');
+    let title = (heading?.textContent || meta('og:title') || document.title || '').replace(/\s+/g, ' ').trim();
+    title = title.replace(new RegExp(`\\s*[-|–—@]\\s*${company}.*$`, 'i'), '').slice(0, 120);
+    return { title, company, ats, url: location.href.split('#')[0] };
   }
 
   /** The page field Quick copy would insert into, with a human label. */
@@ -1715,6 +1746,18 @@
       setArmed(true); // after one manual fill, keep following later steps AND later pages
       runAutofill({ force: !!msg.force }).then((stats) => sendResponse({ ok: true, stats }));
       return true;
+    }
+    // Side panel → type a profile value into the field the user last focused
+    // (sent to the exact frame the background recorded for that focus).
+    if (msg?.type === 'hasanify:insertText') {
+      if (!state.lastFocused?.el?.isConnected) return false;
+      insertText(String(msg.text ?? '')).then((ok) => sendResponse({ ok }));
+      return true;
+    }
+    if (msg?.type === 'hasanify:getPageInfo') {
+      if (window !== window.top) return false;
+      sendResponse({ ok: true, info: getPageInfo() });
+      return false;
     }
     if (msg?.type === 'hasanify:debug') {
       if (window !== window.top && !queryAllDeep(FIELD_SELECTOR).length) return false;

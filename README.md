@@ -9,7 +9,7 @@ A Manifest V3 browser extension that autofills job applications — Workday, Gre
 - **Framework-safe injection**: native value setters plus `input`/`change`/`blur` events, real click sequences for radios, checkboxes and custom dropdowns (react-select, Workday listboxes), `DataTransfer` file uploads.
 - **Multi-step forms**: a `MutationObserver` fills new steps as they render, and fields wiped by late React hydration are re-filled.
 - **On-page assistant**: progress, filled count, a clickable "needs your attention" list, and an Attachments card for resume / cover-letter uploads.
-- **Quick copy** (`Alt+Shift+C` or the popup): every profile value — contact, address, links, each job and school, skills, custom answers, cover letter — searchable in the on-page panel. Click to copy, or click into a form field first and hit **Insert** to type it straight in (works with React inputs, selects and searchable dropdowns).
+- **Quick access side panel** (`Alt+Shift+C`, the popup, or the tab under the on-page launcher): a Chrome side panel docked next to the page with a daily applications counter, one-click autofill, *Save application* / *Mark as applied*, autofill settings, and your whole profile — click any value to copy it, or click into a form field first and hit **Insert** to type it straight in (React inputs, selects, searchable dropdowns, even inside iframes).
 - **Multi-page applications**: once you fill one page, later pages of the same application in that tab fill automatically (full page loads, class-toggled steps, SPA steps).
 - **Tailored applications**: resume uploads can be *automatic*, *ask me each time* (pick saved or a tailored file from the assistant), or *manual*; cover letters can be left entirely to you.
 - **AI profile builder**: copy a prompt into ChatGPT / Claude / Gemini with your resumes and questionnaires; it interviews you about anything missing and returns a profile you paste back and import.
@@ -32,6 +32,7 @@ A Manifest V3 browser extension that autofills job applications — Workday, Gre
 | `ui/widget.js` | Floating on-page assistant (closed shadow root) |
 | `shared/profile-schema.js` | Profile JSON Schema, defaults, validator, completeness |
 | `options/` | Profile dashboard + AI profile builder |
+| `sidepanel/` | Quick access side panel (counter, autofill, save application, click-to-copy profile) |
 | `popup/` | Toolbar popup |
 | `ui/theme.css`, `ui/icons.js`, `icons/` | Shared styles, icons, extension icons |
 

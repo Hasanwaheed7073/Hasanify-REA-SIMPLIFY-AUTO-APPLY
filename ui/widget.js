@@ -52,6 +52,7 @@
     check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>`,
     alert: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 8v5M12 16.5v.5"/><circle cx="12" cy="12" r="9"/></svg>`,
     arrow: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>`,
+    idcard: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="11" r="2.2"/><path d="M5.8 16c.6-1.5 1.8-2.3 3.2-2.3s2.6.8 3.2 2.3M14.5 10h4M14.5 13.5h3"/></svg>`,
     user: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>`,
     copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>`,
     search: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`,
@@ -168,45 +169,15 @@
     .toggle[aria-checked="true"] .switch::after { transform: translateX(14px); }
     .hidden { display: none !important; }
 
-    /* Tabs */
-    .tabs { display: flex; gap: 4px; margin: 0 16px 12px; padding: 3px; border-radius: 11px; background: var(--soft); }
-    .tab { flex: 1; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; gap: 6px;
-      font-size: 12.5px; font-weight: 600; color: var(--muted); }
-    .tab .ico { width: 14px; height: 14px; }
-    .tab:hover { color: var(--ink); }
-    .tab.active { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(16,24,40,.12); }
-    .body[hidden] { display: none; }
-
-    /* Quick copy */
-    .qc-search { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px;
-      border-radius: 10px; border: 1px solid var(--line); background: #fff; margin-bottom: 10px; }
-    .qc-search:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(91,91,247,.14); }
-    .qc-search .ico { width: 15px; height: 15px; color: var(--muted); flex: none; }
-    .qc-search input { all: unset; flex: 1; font-size: 13px; color: var(--ink); }
-    .qc-search input::placeholder { color: #98A2B3; }
-    .qc-target { position: sticky; top: 48px; z-index: 1; font-size: 11.5px; color: var(--muted); margin: -10px -2px 8px;
-      padding: 6px 4px 8px; line-height: 1.4; background: #fff; box-shadow: 0 6px 6px -6px rgba(16,24,40,.12); }
-    .qc-target b { color: var(--brand); font-weight: 600; }
-    .qc-group { margin-bottom: 12px; }
-    .qc-group-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 0 2px 6px; }
-    .qc-row { position: relative; display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; padding: 7px 8px 7px 10px;
-      border-radius: 9px; border: 1px solid transparent; transition: background .12s, border-color .12s; }
-    .qc-row:hover { background: var(--soft); border-color: var(--line); }
-    .qc-main { flex: 1; min-width: 0; cursor: copy; }
-    .qc-k { display: block; font-size: 11px; color: var(--muted); line-height: 1.3; }
-    .qc-v { display: block; font-size: 13px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .qc-row.long .qc-v { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-    .qc-act { flex: none; height: 26px; min-width: 26px; padding: 0 6px; border-radius: 7px; display: flex; align-items: center; gap: 4px;
-      color: var(--muted); font-size: 11.5px; font-weight: 600; opacity: .55; transition: opacity .12s, background .12s, color .12s; }
-    .qc-act svg { width: 14px; height: 14px; }
-    .qc-row:hover .qc-act { opacity: 1; }
-    .qc-act:hover { background: #fff; color: var(--brand); }
-    .qc-act.insert { color: var(--brand); opacity: 1; }
-    .qc-row.copied { background: var(--ok-bg); border-color: #ABEFC6; }
-    .qc-row.copied .qc-k::after { content: " · Copied!"; color: #067647; font-weight: 600; }
-    .qc-row.inserted { background: var(--brand-soft, #EEEEFF); border-color: #C7C9F9; }
-    .qc-row.inserted .qc-k::after { content: " · Inserted"; color: var(--brand); font-weight: 600; }
-    .qc-empty { text-align: center; color: var(--muted); font-size: 12.5px; padding: 18px 8px; }
+    /* Quick access: edge tab under the launcher + header button (open the side panel) */
+    .root { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+    .qa-tab { width: 52px; height: 40px; padding: 9px 14px; border-radius: 12px; color: #C3C8D4; background: #1E222B;
+      box-shadow: 0 10px 24px -8px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.06); transition: transform .15s, color .15s; }
+    .qa-tab:hover { transform: translateY(-1px); color: #fff; }
+    .qa-btn { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px 0 7px; border-radius: 8px;
+      font-size: 12px; font-weight: 600; color: var(--brand); background: var(--brand-soft, #EEEEFF); margin-right: 2px; }
+    .qa-btn svg { width: 16px; height: 16px; }
+    .qa-btn:hover { filter: brightness(.97); }
 
     /* Attachments (resume / cover letter) */
     .uploads { display: flex; flex-direction: column; gap: 8px; }
@@ -243,30 +214,17 @@
       <button class="launcher" title="Hasanify — autofill this application">
         ${logo()}<span class="count hidden"></span>
       </button>
+      <button class="qa-tab" data-act="quick-access" title="Quick access — your profile, click to copy (Alt+Shift+C)">${I.idcard}</button>
 
       <section class="panel hidden" role="dialog" aria-label="Hasanify">
         <header class="head">
           <span class="logo">${logo()}</span>
           <span class="brand">Hasanify</span>
           <span class="spacer"></span>
+          <button class="qa-btn" data-act="quick-access" title="Open Quick access side panel (Alt+Shift+C)">${I.idcard}<span>Quick access</span></button>
           <button class="icon-btn" data-act="minimize" title="Minimize">${I.minus}</button>
           <button class="icon-btn" data-act="close" title="Hide on this page">${I.close}</button>
         </header>
-
-        <nav class="tabs" role="tablist">
-          <button class="tab active" role="tab" data-tab="autofill" aria-selected="true"><span class="ico">${I.bolt}</span>Autofill</button>
-          <button class="tab" role="tab" data-tab="copy" aria-selected="false"><span class="ico">${I.copy}</span>Quick copy</button>
-        </nav>
-
-        <div class="body" data-view="copy" hidden>
-          <div class="qc-search">
-            <span class="ico">${I.search}</span>
-            <input type="search" data-ref="qcSearch" placeholder="Search your profile…" autocomplete="off" spellcheck="false" />
-          </div>
-          <div class="qc-target" data-ref="qcTarget"></div>
-          <div data-ref="qcList"></div>
-          <div class="qc-empty hidden" data-ref="qcEmpty"></div>
-        </div>
 
         <div class="body" data-view="autofill">
           <div class="job">
@@ -321,6 +279,7 @@
   const ref = (name) => shadow.querySelector(`[data-ref="${name}"]`);
   const root = $('.root');
   const launcher = $('.launcher');
+  const qaTab = $('.qa-tab');
   const panel = $('.panel');
 
   const ui = { open: false, running: false, hasRun: false, dismissed: false, top: 120, tab: 'autofill' };
@@ -330,6 +289,7 @@
     ui.open = open;
     panel.classList.toggle('hidden', !open);
     launcher.classList.toggle('hidden', open);
+    qaTab.classList.toggle('hidden', open);
     savePos();
     if (open) render();
   }
@@ -487,187 +447,6 @@
     render();
   });
 
-  // ── Quick copy ─────────────────────────────────────────────────────────
-  // Every profile value one click away: click = copy to clipboard; when the
-  // user has clicked into a page field first, "Insert" types it right there.
-
-  const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const fmtYm = (ym) => {
-    const m = /^(\d{4})-(\d{2})/.exec(ym ?? '');
-    return m ? `${MONTH[+m[2] - 1]} ${m[1]}` : '';
-  };
-  const range = (e) => (e.startDate ? `${fmtYm(e.startDate)} – ${e.current ? 'Present' : fmtYm(e.endDate) || '…'}` : '');
-  const yesNo = (b) => (b === true ? 'Yes' : b === false ? 'No' : '');
-
-  /** [{ title, items: [[label, value], …] }] with empty values removed. */
-  function buildCopyGroups(p) {
-    if (!p) return [];
-    const { personal: me, links = {}, workAuthorization: wa = {}, preferences: pr = {}, skills = {}, documents: docs = {} } = p;
-    const a = me.address ?? {};
-    const groups = [
-      { title: 'Basics', items: [
-        ['Full name', [me.firstName, me.middleName, me.lastName].filter(Boolean).join(' ')],
-        ['First name', me.firstName], ['Last name', me.lastName], ['Preferred name', me.preferredName],
-        ['Email', me.email], ['Phone', me.phone],
-        ['Phone (with country code)', me.phone && me.phoneCountryCode ? `${me.phoneCountryCode} ${me.phone}` : ''],
-        ['Pronouns', me.pronouns],
-      ] },
-      { title: 'Address', items: [
-        ['Street', [a.line1, a.line2].filter(Boolean).join(', ')], ['City', a.city], ['State', a.state],
-        ['Postal code', a.postalCode], ['Country', a.country],
-        ['City, State', [a.city, a.state].filter(Boolean).join(', ')],
-        ['Full address', [a.line1, a.line2, a.city, [a.state, a.postalCode].filter(Boolean).join(' '), a.country].filter(Boolean).join(', ')],
-      ] },
-      { title: 'Links', items: [
-        ['LinkedIn', links.linkedin], ['GitHub', links.github], ['Portfolio', links.portfolio], ['Website', links.website], ['X / Twitter', links.twitter],
-        ...(links.other ?? []).map((o) => [o.label || 'Link', o.url]),
-      ] },
-      { title: 'Work authorization', items: [
-        ['Authorized to work', yesNo(wa.authorizedToWork)], ['Requires sponsorship', yesNo(wa.requiresSponsorship)],
-        ['Visa status', wa.visaStatus], ['Citizenship', wa.citizenship], ['Security clearance', wa.securityClearance],
-      ] },
-      ...(p.experience ?? []).map((e, i) => ({
-        title: i === 0 ? `Experience · ${e.company || 'Current'}` : `Experience · ${e.company || `#${i + 1}`}`,
-        items: [['Job title', e.title], ['Company', e.company], ['Location', e.location], ['Dates', range(e)],
-          ['Start date', fmtYm(e.startDate)], ['End date', e.current ? 'Present' : fmtYm(e.endDate)], ['Description', e.description]],
-      })),
-      ...(p.education ?? []).map((e, i) => ({
-        title: `Education · ${e.school || `#${i + 1}`}`,
-        items: [['School', e.school], ['Degree', e.degree], ['Field of study', e.fieldOfStudy],
-          ['Degree + field', [e.degree, e.fieldOfStudy].filter(Boolean).join(' in ')], ['GPA', e.gpa], ['Dates', range(e)],
-          ['Graduation', fmtYm(e.endDate)]],
-      })),
-      { title: 'Skills', items: [
-        ['Skills', (skills.technical ?? []).join(', ')], ['Certifications', (skills.certifications ?? []).join(', ')],
-        ['Languages', (skills.spokenLanguages ?? []).map((l) => (l.proficiency ? `${l.language} (${l.proficiency})` : l.language)).join(', ')],
-      ] },
-      { title: 'Preferences', items: [
-        ['Desired salary', pr.desiredSalary], ['Notice period', pr.noticePeriod], ['Earliest start date', pr.earliestStartDate],
-        ['Willing to relocate', yesNo(pr.willingToRelocate)], ['How did you hear about us', pr.howDidYouHear],
-      ] },
-      { title: 'Answers', items: [
-        ...(p.customAnswers ?? []).map((c) => [c.question, c.answer]),
-        ['Cover letter', docs.coverLetterText],
-      ] },
-    ];
-    return groups
-      .map((g) => ({ ...g, items: g.items.filter(([, v]) => v != null && String(v).trim() !== '').map(([k, v]) => [k, String(v)]) }))
-      .filter((g) => g.items.length);
-  }
-
-  async function copyToClipboard(text) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      // Pages with a restrictive Permissions-Policy: fall back to execCommand on a temp textarea.
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.setAttribute('data-hasanify-ignore', '');
-      ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
-      document.documentElement.append(ta);
-      ta.select();
-      const ok = document.execCommand('copy');
-      ta.remove();
-      return ok;
-    }
-  }
-
-  function flashRow(row, cls) {
-    row.classList.remove('copied', 'inserted');
-    void row.offsetWidth;
-    row.classList.add(cls);
-    clearTimeout(row._t);
-    row._t = setTimeout(() => row.classList.remove(cls), 1600);
-  }
-
-  function renderQuickCopy() {
-    // The engine drops its cached profile when the dashboard saves; reload it.
-    if (!engine.getProfile()) {
-      engine.loadContext().then(() => engine.getProfile() && renderQuickCopy()).catch(() => {});
-      return;
-    }
-    const q = ref('qcSearch').value.trim().toLowerCase();
-    const target = engine.getFocusTarget();
-    const tgt = ref('qcTarget');
-    tgt.innerHTML = target ? 'Insert into <b></b> — or click any value to copy' : 'Click a value to copy · click into a form field first to get <b>Insert</b>';
-    if (target) tgt.querySelector('b').textContent = `“${target.label}”`;
-
-    const list = ref('qcList');
-    list.replaceChildren();
-    let shown = 0;
-    for (const group of buildCopyGroups(engine.getProfile())) {
-      const items = q ? group.items.filter(([k, v]) => `${group.title} ${k} ${v}`.toLowerCase().includes(q)) : group.items;
-      if (!items.length) continue;
-      const g = document.createElement('div');
-      g.className = 'qc-group';
-      const title = document.createElement('div');
-      title.className = 'qc-group-title';
-      title.textContent = group.title;
-      g.append(title);
-      for (const [label, value] of items) {
-        shown++;
-        const row = document.createElement('div');
-        row.className = `qc-row${value.length > 60 ? ' long' : ''}`;
-        row.innerHTML = `
-          <div class="qc-main" title="Click to copy"><span class="qc-k"></span><span class="qc-v"></span></div>
-          ${target ? `<button class="qc-act insert" title="Insert into the selected field">${I.insert}Insert</button>` : ''}
-          <button class="qc-act copy" title="Copy">${I.copy}</button>`;
-        row.querySelector('.qc-k').textContent = label;
-        row.querySelector('.qc-v').textContent = value;
-        const copy = async () => { if (await copyToClipboard(value)) flashRow(row, 'copied'); };
-        row.querySelector('.qc-main').addEventListener('click', copy);
-        row.querySelector('.copy').addEventListener('click', copy);
-        row.querySelector('.insert')?.addEventListener('click', async () => {
-          if (await engine.insertText(value)) flashRow(row, 'inserted');
-          else if (await copyToClipboard(value)) flashRow(row, 'copied'); // couldn't insert → at least copy it
-        });
-        g.append(row);
-      }
-      list.append(g);
-    }
-    const empty = ref('qcEmpty');
-    empty.classList.toggle('hidden', shown > 0);
-    empty.textContent = engine.getProfile() && !q ? 'Your profile is empty — add details in the dashboard.' : `No matches for “${q}”.`;
-  }
-
-  function switchTab(name) {
-    ui.tab = name;
-    for (const t of shadow.querySelectorAll('.tab')) {
-      const on = t.dataset.tab === name;
-      t.classList.toggle('active', on);
-      t.setAttribute('aria-selected', String(on));
-    }
-    for (const v of shadow.querySelectorAll('[data-view]')) v.hidden = v.dataset.view !== name;
-    $('.foot').classList.toggle('hidden', name !== 'autofill');
-    if (name === 'copy') renderQuickCopy();
-    applyTop();
-  }
-
-  shadow.addEventListener('click', (e) => {
-    const tab = e.target.closest('.tab');
-    if (tab) switchTab(tab.dataset.tab);
-  });
-  ref('qcSearch').addEventListener('input', renderQuickCopy);
-  ref('qcSearch').addEventListener('keydown', (e) => e.stopPropagation()); // don't trigger page shortcuts
-  engine.events.addEventListener('focus-target', () => ui.open && ui.tab === 'copy' && renderQuickCopy());
-
-  /** Open the panel straight on Quick copy (popup button / Alt+Shift+C). */
-  async function openQuickCopy() {
-    ui.dismissed = false;
-    if (!engine.getProfile()) await engine.loadContext().catch(() => {});
-    mount();
-    if (!ui.open) setOpen(true);
-    switchTab('copy');
-    ref('qcSearch').focus({ preventScroll: true });
-  }
-  if (window === window.top) {
-    chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
-      if (msg?.type !== 'hasanify:openQuickCopy') return false;
-      openQuickCopy().then(() => sendResponse({ ok: true }));
-      return true;
-    });
-  }
 
   function jumpTo(el) {
     if (!el?.isConnected) return render();
@@ -729,6 +508,8 @@
   shadow.addEventListener('click', async (e) => {
     const act = e.target.closest('[data-act]')?.dataset.act;
     if (!act) return;
+    // Side panel must open inside this click (Chrome user-gesture rule): message synchronously.
+    if (act === 'quick-access') chrome.runtime.sendMessage({ type: 'hasanify:openSidePanel' }).catch(() => {});
     if (act === 'fill') engine.fill();
     if (act === 'minimize') setOpen(false);
     if (act === 'close') { ui.dismissed = true; host.remove(); }
@@ -795,6 +576,7 @@
     } catch { /* ignore */ }
     panel.classList.toggle('hidden', !ui.open);
     launcher.classList.toggle('hidden', ui.open);
+    qaTab.classList.toggle('hidden', ui.open);
     // Let SPAs render their forms first.
     setTimeout(evaluatePage, 700);
   })();

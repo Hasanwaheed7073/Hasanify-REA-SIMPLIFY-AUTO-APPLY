@@ -1,15 +1,16 @@
 {
   "manifest_version": 3,
   "name": "Hasanify",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Autofill job applications (Workday, Greenhouse, Lever, Ashby, …) from your saved profile.",
+  "minimum_chrome_version": "116",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "permissions": ["storage", "unlimitedStorage", "activeTab", "scripting", "contextMenus"],
+  "permissions": ["storage", "unlimitedStorage", "activeTab", "scripting", "contextMenus", "sidePanel", "clipboardWrite"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
@@ -23,6 +24,9 @@
       "run_at": "document_idle"
     }
   ],
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
   "options_ui": {
     "page": "options/options.html",
     "open_in_tab": true
@@ -41,9 +45,9 @@
       "suggested_key": { "default": "Alt+Shift+F" },
       "description": "Fill the job application on this page"
     },
-    "open-quick-copy": {
+    "open-quick-access": {
       "suggested_key": { "default": "Alt+Shift+C" },
-      "description": "Open Quick copy (profile values) on this page"
+      "description": "Open Quick access (side panel with your profile)"
     }
   }
 }

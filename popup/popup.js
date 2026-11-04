@@ -44,7 +44,6 @@ async function init() {
   $('heroTitle').textContent = ats ? `Ready to fill this ${ats} application` : 'Autofill your application';
   if (!scriptable) {
     $('fill').disabled = true;
-    $('quickCopy').disabled = true;
     $('heroSub').textContent = 'Open a job application to get started.';
   }
 
@@ -84,10 +83,16 @@ $('fill').addEventListener('click', async () => {
     : 'No fillable fields found on this page.';
 });
 
-$('quickCopy').addEventListener('click', async () => {
-  const res = await send('hasanify:openQuickCopyActiveTab');
-  if (res?.ok === false) { $('heroSub').textContent = res.error; return; }
-  window.close(); // panel is now open on the page
+// Side panel must be opened synchronously inside the click (user-gesture rule),
+// so the window id is looked up ahead of time.
+let currentWindowId = null;
+chrome.windows.getCurrent().then((w) => { currentWindowId = w.id; });
+
+$('quickCopy').addEventListener('click', () => {
+  if (currentWindowId == null) return;
+  chrome.sidePanel.open({ windowId: currentWindowId })
+    .then(() => window.close())
+    .catch((err) => { $('heroSub').textContent = `Couldn't open Quick access: ${err.message}`; });
 });
 
 $('settingsBtn').addEventListener('click', openDashboard);

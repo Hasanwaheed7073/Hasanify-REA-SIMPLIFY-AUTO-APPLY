@@ -113,28 +113,30 @@ async function getActiveTabId() {
   return tab?.id;
 }
 
-/** Open the in-page panel on its Quick copy tab (top frame), injecting if needed. */
-async function openQuickCopy(tabId) {
-  const message = { type: 'hasanify:openQuickCopy' };
-  try {
-    return await chrome.tabs.sendMessage(tabId, message, { frameId: 0 });
-  } catch {
-    try {
-      await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: CONTENT_FILES });
-      await new Promise((r) => setTimeout(r, 300));
-      return await chrome.tabs.sendMessage(tabId, message, { frameId: 0 });
-    } catch (err) {
-      return { ok: false, error: `Quick copy isn't available on this page: ${err.message}` };
-    }
-  }
+// ───────────────────────────────────────────────────────────────────────────
+// Quick access side panel
+// ───────────────────────────────────────────────────────────────────────────
+// chrome.sidePanel.open() only works while a user gesture is active, so every
+// caller invokes it synchronously — before any await.
+
+function openSidePanel(windowId) {
+  if (windowId == null) return Promise.resolve({ ok: false, error: 'No window' });
+  return chrome.sidePanel.open({ windowId }).then(() => ({ ok: true }), (err) => ({ ok: false, error: err.message }));
 }
 
-chrome.commands.onCommand.addListener(async (command) => {
-  const tabId = await getActiveTabId();
-  if (tabId == null) return;
-  if (command === 'fill-form') await triggerFill(tabId);
-  if (command === 'open-quick-copy') await openQuickCopy(tabId);
+chrome.commands.onCommand.addListener((command, tab) => {
+  if (command === 'open-quick-access') {
+    openSidePanel(tab?.windowId); // synchronous: keyboard shortcut is a user gesture
+    return;
+  }
+  if (command === 'fill-form') getActiveTabId().then((tabId) => tabId != null && triggerFill(tabId));
 });
+
+/**
+ * Last page field the user clicked into, per tab — including WHICH frame, so
+ * the side panel's "Insert" reaches the right input even inside iframes.
+ */
+const focusByTab = new Map(); // tabId -> { frameId, label, at }
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === MENU_ID && tab?.id != null) triggerFill(tab.id);
@@ -171,6 +173,7 @@ function summarizeTab(tabId) {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   tabStats.delete(tabId);
+  focusByTab.delete(tabId);
   chrome.storage.session.remove(armKey(tabId)).catch(() => {});
 });
 
@@ -228,10 +231,13 @@ const HANDLERS = {
     await new Promise((r) => setTimeout(r, 300));
     return { ok: res?.ok !== false, error: res?.error, stats: summarizeTab(tabId) };
   },
-  'hasanify:openQuickCopyActiveTab': async () => {
-    const tabId = await getActiveTabId();
-    return tabId == null ? { ok: false, error: 'No active tab' } : (await openQuickCopy(tabId)) ?? { ok: true };
+  // content script → "user focused this field" (fuel for the side panel's Insert)
+  'hasanify:focusTarget': (msg, sender) => {
+    if (sender.tab?.id != null) focusByTab.set(sender.tab.id, { frameId: sender.frameId ?? 0, label: msg.label, at: msg.at });
+    return { ok: true };
   },
+  'hasanify:getFocusTarget': (msg) => ({ ok: true, target: focusByTab.get(msg.tabId) ?? null }),
+
   'hasanify:getTabStats': async () => ({ ok: true, stats: summarizeTab(await getActiveTabId()) }),
 
   // content script ↔ multi-page application session
@@ -253,6 +259,11 @@ const HANDLERS = {
 };
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // Must run synchronously inside the click that sent it (user-gesture rule).
+  if (msg?.type === 'hasanify:openSidePanel') {
+    openSidePanel(sender.tab?.windowId ?? msg.windowId).then(sendResponse);
+    return true;
+  }
   const handler = HANDLERS[msg?.type];
   if (!handler) return false;
   Promise.resolve()
