@@ -1,0 +1,17 @@
+# Local Claude Code settings
+.claude/settings.local.json
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Packaged builds
+*.zip
+*.crx
+*.pem
+
+# Never commit personal data
+hasanify-profile*.json

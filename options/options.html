@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hasanify · Profile</title>
+  <link rel="stylesheet" href="../ui/theme.css" />
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <div class="layout">
+    <!-- ─── Sidebar ──────────────────────────────────────────────── -->
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="../icons/icon-48.png" alt="" width="30" height="30" />
+        <span>Hasanify</span>
+      </div>
+
+      <div class="completeness">
+        <div class="ring" id="ring" data-v="0%" style="--size:52px"></div>
+        <div>
+          <b id="completenessTitle">Profile strength</b>
+          <span id="completenessHint">Add details to autofill more fields</span>
+        </div>
+      </div>
+
+      <nav class="nav" id="nav">
+        <a href="#ai" data-icon="sparkles" class="nav-ai">AI profile builder <em>New</em></a>
+        <a href="#personal" data-icon="user">Personal info</a>
+        <a href="#links" data-icon="link">Links</a>
+        <a href="#experience" data-icon="briefcase">Experience</a>
+        <a href="#education" data-icon="cap">Education</a>
+        <a href="#skills" data-icon="spark">Skills</a>
+        <a href="#authorization" data-icon="shield">Work authorization</a>
+        <a href="#preferences" data-icon="sliders">Preferences</a>
+        <a href="#eeo" data-icon="heart">Voluntary identification</a>
+        <a href="#documents" data-icon="file">Resume &amp; documents</a>
+        <a href="#answers" data-icon="chat">Custom answers</a>
+        <a href="#settings" data-icon="gear">Settings</a>
+      </nav>
+
+      <div class="save-state" id="saveState"><i></i><span>All changes saved</span></div>
+    </aside>
+
+    <!-- ─── Main ─────────────────────────────────────────────────── -->
+    <main class="main">
+      <header class="page-head">
+        <div>
+          <h1 id="greeting">Your profile</h1>
+          <p>Hasanify uses this to autofill job applications on Workday, Greenhouse, Lever and more.</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn" id="importBtn" data-icon-btn="upload">Import</button>
+          <button class="btn" id="exportBtn" data-icon-btn="download">Export</button>
+          <input type="file" id="importFile" accept="application/json" hidden />
+        </div>
+      </header>
+
+      <!-- AI profile builder -->
+      <section class="card ai-card" id="ai">
+        <div class="card-head">
+          <span class="ai-eyebrow" data-icon="sparkles">AI profile builder</span>
+          <h2>Build your whole profile with ChatGPT, Claude or Gemini</h2>
+          <p>Give an AI your resumes, questionnaires and intake forms. It fills in every section, asks you about anything missing, and hands back a profile you import here in one click.</p>
+        </div>
+
+        <ol class="steps">
+          <!-- Step 1 -->
+          <li class="step">
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <div class="step-title">Copy the prompt</div>
+              <p class="step-text">It teaches the AI Hasanify's exact profile format and the rules to follow.</p>
+              <div class="prompt-box">
+                <pre id="aiPrompt" tabindex="0"></pre>
+                <div class="prompt-fade"></div>
+              </div>
+              <div class="step-actions">
+                <button class="btn btn-primary" id="copyPrompt" data-icon-btn="copy"><span>Copy prompt</span></button>
+                <button class="btn btn-ghost" id="expandPrompt">Show full prompt</button>
+                <label class="check"><input type="checkbox" id="includeCurrent" checked /> Include my current profile (AI will update it)</label>
+              </div>
+            </div>
+          </li>
+
+          <!-- Step 2 -->
+          <li class="step">
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <div class="step-title">Paste it into your AI with your documents</div>
+              <p class="step-text">Attach your resume(s), questionnaires, intake forms — anything about you. Answer the AI's follow-up questions until it gives you the final profile.</p>
+              <div class="ai-links">
+                <a class="ai-link" href="https://chatgpt.com/" target="_blank" rel="noopener"><b>ChatGPT</b><span>chatgpt.com</span></a>
+                <a class="ai-link" href="https://claude.ai/new" target="_blank" rel="noopener"><b>Claude</b><span>claude.ai</span></a>
+                <a class="ai-link" href="https://gemini.google.com/app" target="_blank" rel="noopener"><b>Gemini</b><span>gemini.google.com</span></a>
+              </div>
+            </div>
+          </li>
+
+          <!-- Step 3 -->
+          <li class="step">
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <div class="step-title">Paste the AI's final answer</div>
+              <p class="step-text">Paste the whole reply — Hasanify finds the profile inside it, fixes common formatting slips, and shows you a preview before importing.</p>
+              <div class="field"><textarea id="aiPaste" rows="6" placeholder="Paste the AI's final message here (the one with the ```json block)…"></textarea></div>
+              <div class="step-actions">
+                <button class="btn" id="aiCheck" data-icon-btn="check">Check profile</button>
+                <span class="ai-status" id="aiStatus"></span>
+              </div>
+
+              <div class="ai-preview" id="aiPreview" hidden>
+                <div class="ai-preview-head">
+                  <div class="ring" id="aiRing" data-v="0%" style="--size:46px"></div>
+                  <div><b id="aiPreviewTitle"></b><span id="aiPreviewSub"></span></div>
+                </div>
+                <div class="ai-stats" id="aiStats"></div>
+                <div class="ai-notes" id="aiNotes"></div>
+                <div class="step-actions">
+                  <button class="btn btn-primary" id="aiImport" data-icon-btn="download"><span>Import into Hasanify</span></button>
+                  <button class="btn btn-ghost" id="aiCancel">Cancel</button>
+                </div>
+              </div>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <!-- Personal -->
+      <section class="card" id="personal">
+        <div class="card-head"><h2>Personal info</h2><p>Basics every application asks for.</p></div>
+        <div class="grid">
+          <label class="field"><span>First name</span><input data-path="personal.firstName" autocomplete="given-name" /></label>
+          <label class="field"><span>Last name</span><input data-path="personal.lastName" autocomplete="family-name" /></label>
+          <label class="field"><span>Middle name <small>optional</small></span><input data-path="personal.middleName" /></label>
+          <label class="field"><span>Preferred name <small>optional</small></span><input data-path="personal.preferredName" /></label>
+          <label class="field"><span>Email</span><input type="email" data-path="personal.email" autocomplete="email" /></label>
+          <div class="grid-phone">
+            <label class="field"><span>Code</span><input data-path="personal.phoneCountryCode" placeholder="+1" /></label>
+            <label class="field"><span>Phone</span><input type="tel" data-path="personal.phone" placeholder="4155550123" /></label>
+          </div>
+          <label class="field"><span>Pronouns <small>optional</small></span>
+            <select data-path="personal.pronouns">
+              <option value="">Not specified</option><option>He/him</option><option>She/her</option><option>They/them</option>
+              <option>Decline to self-identify</option>
+            </select>
+          </label>
+        </div>
+        <div class="subhead">Address</div>
+        <div class="grid">
+          <label class="field span-2"><span>Street address</span><input data-path="personal.address.line1" /></label>
+          <label class="field"><span>Apt / suite <small>optional</small></span><input data-path="personal.address.line2" /></label>
+          <label class="field"><span>City</span><input data-path="personal.address.city" /></label>
+          <label class="field"><span>State / province</span><input data-path="personal.address.state" /></label>
+          <label class="field"><span>Postal code</span><input data-path="personal.address.postalCode" /></label>
+          <label class="field"><span>Country</span><input data-path="personal.address.country" placeholder="United States" /></label>
+        </div>
+      </section>
+
+      <!-- Links -->
+      <section class="card" id="links">
+        <div class="card-head"><h2>Links</h2><p>Profiles recruiters look at.</p></div>
+        <div class="grid">
+          <label class="field"><span>LinkedIn</span><input type="url" data-path="links.linkedin" placeholder="https://linkedin.com/in/…" /></label>
+          <label class="field"><span>GitHub</span><input type="url" data-path="links.github" placeholder="https://github.com/…" /></label>
+          <label class="field"><span>Portfolio</span><input type="url" data-path="links.portfolio" /></label>
+          <label class="field"><span>Personal website</span><input type="url" data-path="links.website" /></label>
+          <label class="field"><span>X / Twitter <small>optional</small></span><input type="url" data-path="links.twitter" /></label>
+        </div>
+      </section>
+
+      <!-- Experience -->
+      <section class="card" id="experience">
+        <div class="card-head row">
+          <div><h2>Experience</h2><p>Most recent first. The top entry is used as your current company &amp; title.</p></div>
+          <button class="btn btn-sm" data-add="experience" data-icon-btn="plus">Add experience</button>
+        </div>
+        <div class="repeat" data-list="experience"></div>
+      </section>
+
+      <!-- Education -->
+      <section class="card" id="education">
+        <div class="card-head row">
+          <div><h2>Education</h2><p>Most recent first.</p></div>
+          <button class="btn btn-sm" data-add="education" data-icon-btn="plus">Add education</button>
+        </div>
+        <div class="repeat" data-list="education"></div>
+      </section>
+
+      <!-- Skills -->
+      <section class="card" id="skills">
+        <div class="card-head"><h2>Skills</h2><p>Press Enter or comma to add.</p></div>
+        <div class="field"><span>Technical skills</span><div class="chips" data-chips="skills.technical" data-placeholder="e.g. React, Python, SQL"></div></div>
+        <div class="field mt"><span>Certifications</span><div class="chips" data-chips="skills.certifications" data-placeholder="e.g. AWS Solutions Architect"></div></div>
+        <div class="subhead row">Spoken languages <button class="btn btn-sm btn-ghost" data-add="languages" data-icon-btn="plus">Add</button></div>
+        <div class="repeat compact" data-list="languages"></div>
+      </section>
+
+      <!-- Work authorization -->
+      <section class="card" id="authorization">
+        <div class="card-head"><h2>Work authorization</h2><p>Answered on nearly every US application.</p></div>
+        <div class="qa">
+          <div class="qa-row"><span>Are you legally authorized to work in your country of residence?</span><div class="seg" data-bool="workAuthorization.authorizedToWork"></div></div>
+          <div class="qa-row"><span>Will you now or in the future require visa sponsorship?</span><div class="seg" data-bool="workAuthorization.requiresSponsorship"></div></div>
+          <div class="qa-row"><span>Are you at least 18 years old?</span><div class="seg" data-bool="preferences.over18"></div></div>
+        </div>
+        <div class="grid mt">
+          <label class="field"><span>Visa / immigration status</span><input data-path="workAuthorization.visaStatus" placeholder="e.g. US Citizen, Green Card, F-1 OPT, H-1B" /></label>
+          <label class="field"><span>Citizenship</span><input data-path="workAuthorization.citizenship" /></label>
+          <label class="field"><span>Security clearance <small>optional</small></span><input data-path="workAuthorization.securityClearance" placeholder="None" /></label>
+        </div>
+      </section>
+
+      <!-- Preferences -->
+      <section class="card" id="preferences">
+        <div class="card-head"><h2>Preferences</h2><p>Logistics questions.</p></div>
+        <div class="grid">
+          <label class="field"><span>Desired salary</span><input data-path="preferences.desiredSalary" placeholder="120000" /></label>
+          <label class="field"><span>Currency</span><input data-path="preferences.salaryCurrency" placeholder="USD" /></label>
+          <label class="field"><span>Earliest start date</span><input type="date" data-path="preferences.earliestStartDate" /></label>
+          <label class="field"><span>Notice period</span><input data-path="preferences.noticePeriod" placeholder="2 weeks" /></label>
+          <label class="field"><span>How did you hear about us? <small>default answer</small></span><input data-path="preferences.howDidYouHear" /></label>
+        </div>
+        <div class="qa mt">
+          <div class="qa-row"><span>Are you willing to relocate?</span><div class="seg" data-bool="preferences.willingToRelocate"></div></div>
+        </div>
+      </section>
+
+      <!-- EEO -->
+      <section class="card" id="eeo">
+        <div class="card-head"><h2>Voluntary self-identification</h2><p>Optional US EEO questions. Defaults to “Decline to self-identify”.</p></div>
+        <div class="grid">
+          <label class="field"><span>Gender</span><select data-path="diversity.gender" data-options="Male|Female|Non-binary|Decline to self-identify"></select></label>
+          <label class="field"><span>Hispanic or Latino</span><select data-path="diversity.hispanicOrLatino" data-options="Yes|No|Decline to self-identify"></select></label>
+          <label class="field"><span>Race / ethnicity</span><select data-path="diversity.race" data-options="American Indian or Alaska Native|Asian|Black or African American|Native Hawaiian or Other Pacific Islander|White|Two or More Races|Decline to self-identify"></select></label>
+          <label class="field"><span>Veteran status</span><select data-path="diversity.veteranStatus" data-options="I am a protected veteran|I am not a protected veteran|Decline to self-identify"></select></label>
+          <label class="field"><span>Disability</span><select data-path="diversity.disabilityStatus" data-options="Yes, I have a disability|No, I do not have a disability|Decline to self-identify"></select></label>
+          <label class="field"><span>Sexual orientation</span><select data-path="diversity.sexualOrientation" data-options="Heterosexual|Gay|Lesbian|Bisexual|Asexual|Queer|Decline to self-identify"></select></label>
+          <label class="field"><span>Transgender</span><select data-path="diversity.transgender" data-options="Yes|No|Decline to self-identify"></select></label>
+        </div>
+      </section>
+
+      <!-- Documents -->
+      <section class="card" id="documents">
+        <div class="card-head"><h2>Resume &amp; documents</h2><p>Your saved resume, and how Hasanify handles resume and cover-letter uploads.</p></div>
+
+        <div class="subhead first">When an application asks for a resume</div>
+        <div class="choice-grid" data-choice="resumeMode">
+          <label class="choice">
+            <input type="radio" name="resumeMode" value="auto" />
+            <span class="choice-ico" data-icon="bolt"></span>
+            <b>Attach my saved resume</b>
+            <span>Uploads the file below automatically on every application.</span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="resumeMode" value="ask" />
+            <span class="choice-ico" data-icon="file"></span>
+            <b>Ask me each time <em>Best for tailoring</em></b>
+            <span>Hasanify fills the rest, then lets you pick your saved resume or a tailored file from its panel.</span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="resumeMode" value="manual" />
+            <span class="choice-ico" data-icon="user"></span>
+            <b>I'll upload it myself</b>
+            <span>Never touches resume uploads — just reminds you which field still needs your file.</span>
+          </label>
+        </div>
+
+        <div class="subhead">Cover letters</div>
+        <div class="choice-grid two" data-choice="coverLetterMode">
+          <label class="choice">
+            <input type="radio" name="coverLetterMode" value="auto" />
+            <b>Use my saved cover letter</b>
+            <span>Fills cover-letter text boxes with the text at the bottom of this section. File uploads stay with you.</span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="coverLetterMode" value="manual" />
+            <b>I'll handle cover letters myself</b>
+            <span>Leaves every cover-letter upload and text box for your tailored version.</span>
+          </label>
+        </div>
+
+        <div class="subhead">Saved resume</div>
+        <div class="dropzone" id="dropzone" tabindex="0">
+          <input type="file" id="resumeInput" accept=".pdf,.doc,.docx" hidden />
+          <div class="dz-empty">
+            <div class="dz-icon" data-icon="upload"></div>
+            <b>Drop your resume here</b>
+            <span>or <u>browse</u> · PDF or Word</span>
+          </div>
+          <div class="dz-file">
+            <div class="file-badge">PDF</div>
+            <div class="file-meta"><b id="resumeName"></b><span id="resumeSize"></span></div>
+            <button class="btn btn-sm" id="resumeReplace">Replace</button>
+            <button class="btn btn-sm btn-danger-ghost" id="resumeRemove">Remove</button>
+          </div>
+        </div>
+        <label class="field mt"><span>Cover letter <small>used for cover-letter text boxes</small></span>
+          <textarea data-path="documents.coverLetterText" rows="6" placeholder="Dear hiring team, …"></textarea>
+        </label>
+      </section>
+
+      <!-- Custom answers -->
+      <section class="card" id="answers">
+        <div class="card-head row">
+          <div><h2>Custom answers</h2><p>Teach Hasanify answers to recurring questions. Matched by phrase in the question label.</p></div>
+          <button class="btn btn-sm" data-add="customAnswers" data-icon-btn="plus">Add answer</button>
+        </div>
+        <div class="repeat" data-list="customAnswers"></div>
+      </section>
+
+      <!-- Settings -->
+      <section class="card" id="settings">
+        <div class="card-head"><h2>Settings</h2></div>
+        <div class="switch-row"><div><b>Show assistant on job pages</b><span>Floating Hasanify button on application forms.</span></div><label class="switch"><input type="checkbox" data-setting="showWidget" /><i></i></label></div>
+        <div class="switch-row"><div><b>Autofill automatically on known ATS sites</b><span>Workday, Greenhouse, Lever, Ashby and others fill as soon as the form loads.</span></div><label class="switch"><input type="checkbox" data-setting="autoFillOnKnownATS" /><i></i></label></div>
+        <div class="switch-row"><div><b>Overwrite existing values</b><span>Replace what's already in a field instead of skipping it.</span></div><label class="switch"><input type="checkbox" data-setting="overwriteExisting" /><i></i></label></div>
+        <div class="switch-row"><div><b>Highlight filled fields</b><span>Green outline on fields Hasanify filled.</span></div><label class="switch"><input type="checkbox" data-setting="highlightFields" /><i></i></label></div>
+      </section>
+
+      <footer class="page-foot">Hasanify stores everything locally in your browser.</footer>
+    </main>
+  </div>
+
+  <!-- Templates for repeatable entries -->
+  <template id="tpl-experience">
+    <article class="entry">
+      <div class="entry-head">
+        <div class="entry-avatar" data-initial></div>
+        <div class="entry-title"><b data-title></b><span data-subtitle></span></div>
+        <div class="entry-actions">
+          <button class="btn btn-sm btn-ghost" data-move="-1" title="Move up">↑</button>
+          <button class="btn btn-sm btn-ghost" data-move="1" title="Move down">↓</button>
+          <button class="btn btn-sm btn-danger-ghost" data-remove title="Remove">Remove</button>
+        </div>
+      </div>
+      <div class="grid">
+        <label class="field"><span>Job title</span><input data-field="title" /></label>
+        <label class="field"><span>Company</span><input data-field="company" /></label>
+        <label class="field"><span>Location</span><input data-field="location" placeholder="City, State" /></label>
+        <label class="field"><span>Employment type</span>
+          <select data-field="employmentType"><option value="">—</option><option>Full-time</option><option>Part-time</option><option>Internship</option><option>Contract</option><option>Freelance</option></select>
+        </label>
+        <label class="field"><span>Start</span><input type="month" data-field="startDate" /></label>
+        <label class="field"><span>End</span><input type="month" data-field="endDate" /></label>
+        <label class="check span-2"><input type="checkbox" data-field="current" /> I currently work here</label>
+        <label class="field span-2"><span>Description</span><textarea data-field="description" rows="4" placeholder="What you built, owned and achieved"></textarea></label>
+      </div>
+    </article>
+  </template>
+
+  <template id="tpl-education">
+    <article class="entry">
+      <div class="entry-head">
+        <div class="entry-avatar" data-initial></div>
+        <div class="entry-title"><b data-title></b><span data-subtitle></span></div>
+        <div class="entry-actions">
+          <button class="btn btn-sm btn-ghost" data-move="-1" title="Move up">↑</button>
+          <button class="btn btn-sm btn-ghost" data-move="1" title="Move down">↓</button>
+          <button class="btn btn-sm btn-danger-ghost" data-remove title="Remove">Remove</button>
+        </div>
+      </div>
+      <div class="grid">
+        <label class="field span-2"><span>School</span><input data-field="school" /></label>
+        <label class="field"><span>Degree</span>
+          <select data-field="degree"><option value="">—</option><option>High School</option><option>Associate's</option><option>Bachelor's</option><option>Master's</option><option>MBA</option><option>PhD</option><option>Other</option></select>
+        </label>
+        <label class="field"><span>Field of study</span><input data-field="fieldOfStudy" placeholder="Computer Science" /></label>
+        <label class="field"><span>Minor <small>optional</small></span><input data-field="minor" /></label>
+        <label class="field"><span>GPA <small>optional</small></span><input data-field="gpa" placeholder="3.8" /></label>
+        <label class="field"><span>Start</span><input type="month" data-field="startDate" /></label>
+        <label class="field"><span>End (or expected)</span><input type="month" data-field="endDate" /></label>
+      </div>
+    </article>
+  </template>
+
+  <template id="tpl-languages">
+    <div class="mini-row">
+      <input class="input" data-field="language" placeholder="Language" />
+      <select class="input" data-field="proficiency"><option value="">Proficiency</option><option>Native</option><option>Fluent</option><option>Professional</option><option>Conversational</option><option>Basic</option></select>
+      <button class="btn btn-sm btn-danger-ghost" data-remove>Remove</button>
+    </div>
+  </template>
+
+  <template id="tpl-customAnswers">
+    <div class="qa-card">
+      <div class="grid">
+        <label class="field span-2"><span>When the question contains…</span><input data-field="question" placeholder="e.g. why do you want to work" /></label>
+        <label class="field span-2"><span>Answer with</span><textarea data-field="answer" rows="3"></textarea></label>
+      </div>
+      <div class="qa-foot">
+        <label class="check"><input type="checkbox" data-field="isRegex" /> Treat as regular expression</label>
+        <button class="btn btn-sm btn-danger-ghost" data-remove>Remove</button>
+      </div>
+    </div>
+  </template>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="../shared/profile-schema.js"></script>
+  <script src="../ui/icons.js"></script>
+  <script src="options.js"></script>
+  <script src="ai-builder.js"></script>
+</body>
+</html>
