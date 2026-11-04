@@ -37,8 +37,14 @@
   'use strict';
 
   // Guard: the script can be injected twice (manifest + scripting.executeScript).
-  if (globalThis.__hasanifyLoaded) return;
+  // A copy left over from before an extension update/reload is DEAD (its
+  // chrome.runtime connection is gone) and must not block the fresh one.
+  if (globalThis.__hasanifyLoaded && globalThis.__hasanifyAlive?.()) return;
   globalThis.__hasanifyLoaded = true;
+  const runtimeId = chrome.runtime?.id;
+  globalThis.__hasanifyAlive = () => {
+    try { return !!chrome.runtime?.id && chrome.runtime.id === runtimeId; } catch { return false; }
+  };
 
   const { DEFAULT_PROFILE, DEFAULT_SETTINGS, mergeWithDefaults } = globalThis.HasanifySchema;
 

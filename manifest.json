@@ -45,7 +45,7 @@
       "suggested_key": { "default": "Alt+Shift+F" },
       "description": "Fill the job application on this page"
     },
-    "open-quick-access": {
+    "open-quick-copy": {
       "suggested_key": { "default": "Alt+Shift+C" },
       "description": "Open Quick access (side panel with your profile)"
     }

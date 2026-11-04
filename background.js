@@ -73,6 +73,12 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
     [KEYS.settings]: await getSettings(),
   });
 
+  // After an install/update/reload, tabs that were already open still run the
+  // OLD content script, whose connection to the extension is now dead (buttons
+  // do nothing). Inject the fresh scripts so open applications keep working
+  // without the user having to refresh every tab.
+  injectIntoOpenTabs();
+
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: MENU_ID,
@@ -108,6 +114,12 @@ async function triggerFill(tabId, { force = true } = {}) {
   }
 }
 
+async function injectIntoOpenTabs() {
+  const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+  await Promise.all(tabs.map((t) =>
+    chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: CONTENT_FILES }).catch(() => {})));
+}
+
 async function getActiveTabId() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   return tab?.id;
@@ -125,7 +137,8 @@ function openSidePanel(windowId) {
 }
 
 chrome.commands.onCommand.addListener((command, tab) => {
-  if (command === 'open-quick-access') {
+  // Command keeps its original id so a user's existing Alt+Shift+C binding survives updates.
+  if (command === 'open-quick-copy') {
     openSidePanel(tab?.windowId); // synchronous: keyboard shortcut is a user gesture
     return;
   }

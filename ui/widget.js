@@ -13,12 +13,21 @@
  */
 (() => {
   'use strict';
-  if (globalThis.__hasanifyWidget || window.top !== window && innerWidth < 360) return;
-  globalThis.__hasanifyWidget = true;
-
   const engine = globalThis.HasanifyEngine;
-  const { computeCompleteness } = globalThis.HasanifySchema;
   if (!engine) return;
+  // One widget per live engine. After an extension update a fresh content.js
+  // creates a NEW engine, so the widget re-initialises against it.
+  if (globalThis.__hasanifyWidget === engine || (window.top !== window && innerWidth < 360)) return;
+  globalThis.__hasanifyWidget = engine;
+  const { computeCompleteness } = globalThis.HasanifySchema;
+
+  // Remove buttons left on the page by a previous (now disconnected) version.
+  document.querySelectorAll('hasanify-assistant').forEach((old) => old.remove());
+
+  /** False once the extension was updated/reloaded under this page. */
+  const alive = () => {
+    try { return !!chrome.runtime?.id; } catch { return false; }
+  };
 
   const POS_KEY = 'hasanify.widget';
   const MIN_MATCHED_TO_SHOW = 3;
@@ -500,6 +509,20 @@
   });
 
   // ── Interactions ───────────────────────────────────────────────────────
+  // Disconnected (extension updated and this page wasn't refreshed or
+  // re-injected): say so instead of silently doing nothing.
+  shadow.addEventListener('click', (e) => {
+    if (alive()) return;
+    e.stopPropagation();
+    e.preventDefault();
+    root.innerHTML = `
+      <div style="width:260px;padding:14px 16px;border-radius:14px;background:#fff;color:#0B1220;
+        box-shadow:0 18px 40px -12px rgba(30,27,75,.35),0 0 0 1px rgba(15,23,42,.08);font:13px/1.45 system-ui,sans-serif">
+        <b style="display:block;margin-bottom:4px">Hasanify was updated</b>
+        Refresh this page to use autofill and Quick access again.
+      </div>`;
+  }, true);
+
   launcher.addEventListener('click', () => {
     if (ui.dragged) return;
     setOpen(true);
