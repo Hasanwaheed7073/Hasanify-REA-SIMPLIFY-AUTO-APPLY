@@ -56,6 +56,8 @@
     MIN_SCORE: 3,              // minimum heuristic score to accept a classification
     MIN_OPTION_SCORE: 55,      // minimum score to accept a <select>/radio/listbox option
     MUTATION_DEBOUNCE_MS: 450,
+    MAX_DEBOUNCE_MS: 1500,     // never postpone a run longer than this, however busy the page is
+    ARMED_POLL_MS: 2500,       // while following an application, look for new fields this often
     OPTION_WAIT_MS: 2000,      // how long to wait for an async dropdown to render options
     BETWEEN_FIELDS_MS: 25,     // breathing room for frameworks that batch state updates
     MAX_TEXT_LEN: 300,         // longer "labels" are probably paragraphs, not labels
@@ -741,6 +743,7 @@
 
     for (const el of queryAllDeep(FIELD_SELECTOR)) {
       if (el.closest('[data-hasanify-ignore]')) continue;
+      forgetIfReused(el);
       const prior = state.registry.get(el);
       if (prior && (prior.status !== 'failed' || prior.retries >= CONFIG.MAX_RETRIES)) continue;
 
@@ -757,6 +760,7 @@
           if (seenGroups.has(groupKey)) continue;
           seenGroups.add(groupKey);
           field.el = members[0];
+          forgetIfReused(field.el);
           if (state.registry.has(field.el) && state.registry.get(field.el).status !== 'failed') continue;
         }
         field.container = container;
@@ -765,6 +769,22 @@
       fields.push(field);
     }
     return fields;
+  }
+
+  /**
+   * What makes a control "the same question". SPA wizards built with React or
+   * Vue often REUSE the DOM nodes of step 1 for step 2 (same position, same
+   * tag) and only swap name/id/labels. Without this check those nodes look
+   * "already done" and the next step is silently skipped.
+   */
+  function identityOf(el) {
+    return [el.name, el.id, el.type, el.getAttribute('aria-label'), el.getAttribute('aria-labelledby'),
+      el.getAttribute('placeholder'), el.getAttribute('data-automation-id'), el.getAttribute('data-qa')].join('|');
+  }
+
+  function forgetIfReused(el) {
+    const prior = state.registry.get(el);
+    if (prior?.ident != null && prior.ident !== identityOf(el)) state.registry.delete(el);
   }
 
   /**
@@ -1426,7 +1446,7 @@
         const { status, key, sig } = await processField(field);
         const prev = state.registry.get(field.el) ?? { retries: 0 };
         state.registry.set(field.el, {
-          ...prev, key, status, field, label: sig?.rawLabel ?? '',
+          ...prev, key, status, field, label: sig?.rawLabel ?? '', ident: identityOf(field.el),
           retries: prev.retries + (status === 'failed' ? 1 : 0),
         });
 
@@ -1462,6 +1482,9 @@
         const report = { ...stats, filled: state.filledEver.size, matched: summary.matched, total: summary.seen };
         chrome.runtime.sendMessage({ type: 'hasanify:report', stats: report }).catch(() => {});
       }
+      // Keep the tab's application session fresh (and remember this site),
+      // so the next page — even on another domain — is followed too.
+      if (stats.filled && state.armed) setArmed(true);
       return stats;
     } catch (err) {
       if (/Extension context invalidated/i.test(String(err))) teardown();
@@ -1856,9 +1879,40 @@
     setArmed: (v) => { setArmed(v); if (v) scheduleRun(); emit('armed', { armed: state.armed }); },
   });
 
+  /**
+   * Debounced run with a MAXIMUM wait. A plain debounce never fires on pages
+   * that mutate continuously (spinners, carousels, focus/hover class churn on
+   * a form wrapper, live character counters): each mutation pushed the run
+   * back again, so the next step simply never got filled.
+   */
   function scheduleRun() {
     clearTimeout(state.debounceTimer);
-    state.debounceTimer = setTimeout(() => runAutofill(), CONFIG.MUTATION_DEBOUNCE_MS);
+    const now = performance.now();
+    state.firstRequestAt ??= now;
+    const wait = Math.max(0, Math.min(CONFIG.MUTATION_DEBOUNCE_MS, state.firstRequestAt + CONFIG.MAX_DEBOUNCE_MS - now));
+    state.debounceTimer = setTimeout(() => {
+      state.firstRequestAt = null;
+      runAutofill();
+    }, wait);
+  }
+
+  /**
+   * Safety net while armed: every few seconds, cheaply check for fillable
+   * fields we have never processed. Catches reveals no mutation describes
+   * (stylesheet swaps, `<details open>`, fields shown by a sibling's class,
+   * pages that replace content inside closed shadow roots).
+   */
+  function startArmedPoll() {
+    if (state.pollTimer) return;
+    state.pollTimer = setInterval(() => {
+      if (!state.armed || state.filling || document.hidden || !state.profile) return;
+      if (state.debounceTimer && state.firstRequestAt != null) return; // a run is already queued
+      try {
+        if (scanFields().length) scheduleRun();
+      } catch (err) {
+        if (/Extension context invalidated/i.test(String(err))) teardown();
+      }
+    }, CONFIG.ARMED_POLL_MS);
   }
 
   /** Drop entries for elements that left the DOM (SPA step changes). */
@@ -1950,6 +2004,8 @@
     state.observer?.disconnect();
     state.armed = false;
     clearTimeout(state.debounceTimer);
+    clearInterval(state.pollTimer);
+    state.pollTimer = null;
   }
 
   // ---- Application-session arming (survives full page loads) ---------------
@@ -1967,17 +2023,36 @@
   function setArmed(armed) {
     const changed = state.armed !== !!armed;
     state.armed = !!armed;
+    if (state.armed) startArmedPoll();
     if (changed) emit('armed', { armed: state.armed });
     chrome.runtime.sendMessage({ type: 'hasanify:setTabArmed', site: siteOf(location.hostname), armed: state.armed }).catch(() => {});
   }
 
+  /** → { armed: this site was filled earlier in this tab, recent: the tab filled something in the last ~20 min } */
   async function isTabArmed() {
     try {
       const res = await chrome.runtime.sendMessage({ type: 'hasanify:isTabArmed', site: siteOf(location.hostname) });
-      return !!res?.armed;
+      return { armed: !!res?.armed, recent: !!res?.recent };
     } catch {
-      return false;
+      return { armed: false, recent: false };
     }
+  }
+
+  /**
+   * After a cross-domain hop (careers.acme.com → acme.icims.com), is this page
+   * the continuation of the application? Needs an application-ish URL/title
+   * AND real evidence in the form: an upload, or ≥2 fields we have values for.
+   */
+  function looksLikeApplication() {
+    const text = `${location.href} ${document.title}`.toLowerCase();
+    if (!/apply|application|candidate|career|jobs?\b|job[-_/]|recruit|talent|hiring|position|vacanc|opening/.test(text)) return false;
+    let known = 0;
+    for (const field of scanFields()) {
+      if (field.kind === 'file') return true;
+      const m = classify(collectSignals(field));
+      if (m && !m.custom && ++known >= 2) return true;
+    }
+    return false;
   }
 
   function isKnownAts() {
@@ -2061,11 +2136,27 @@
     // Auto-fill this page when it's a known ATS, or when the user already
     // filled an earlier page of this application in the same tab.
     const autoAts = state.settings.autoFillOnKnownATS && isKnownAts();
-    if (autoAts || await isTabArmed()) {
+    const tab = await isTabArmed();
+    if (autoAts || tab.armed) {
       state.armed = true;
+      startArmedPoll();
       emit('armed', { armed: true });
       await waitForQuiet(); // let the SPA finish hydrating before the first pass
       scheduleRun();
+    } else if (tab.recent) {
+      // The application continued on another domain. Forms often render late,
+      // so look a few times before giving up.
+      await waitForQuiet();
+      for (const delay of [0, 2500, 6000]) {
+        await sleep(delay);
+        if (state.armed) return; // the user clicked Autofill meanwhile
+        if (looksLikeApplication()) {
+          log('following the application onto', location.hostname);
+          setArmed(true);
+          scheduleRun();
+          return;
+        }
+      }
     }
   })();
 })();

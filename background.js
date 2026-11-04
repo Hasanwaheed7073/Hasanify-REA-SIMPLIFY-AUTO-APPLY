@@ -255,16 +255,31 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 const armKey = (tabId) => `hasanify.armed.${tabId}`;
 
-async function getArmedSites(tabId) {
-  const { [armKey(tabId)]: sites } = await chrome.storage.session.get(armKey(tabId));
-  return sites ?? [];
+// Applications often hop domains mid-way (careers.acme.com → acme.icims.com,
+// LinkedIn → Workday). Within this window after the last fill in the tab, a
+// page on a NEW site that looks like an application is followed too.
+const CROSS_SITE_FOLLOW_MS = 20 * 60 * 1000;
+
+async function getArmState(tabId) {
+  const { [armKey(tabId)]: v } = await chrome.storage.session.get(armKey(tabId));
+  if (Array.isArray(v)) return { sites: v, at: 0 }; // pre-0.3.1 format
+  return { sites: v?.sites ?? [], at: v?.at ?? 0 };
 }
 
 async function setTabArmed(tabId, site, armed) {
   if (tabId == null || !site) return;
-  const sites = new Set(await getArmedSites(tabId));
+  const state = await getArmState(tabId);
+  const sites = new Set(state.sites);
   if (armed) sites.add(site); else sites.delete(site);
-  await chrome.storage.session.set({ [armKey(tabId)]: [...sites] });
+  await chrome.storage.session.set({
+    [armKey(tabId)]: { sites: [...sites], at: armed ? Date.now() : (sites.size ? state.at : 0) },
+  });
+}
+
+async function isTabArmed(tabId, site) {
+  if (tabId == null) return { armed: false, recent: false };
+  const { sites, at } = await getArmState(tabId);
+  return { armed: sites.includes(site), recent: Date.now() - at < CROSS_SITE_FOLLOW_MS };
 }
 chrome.tabs.onUpdated.addListener((tabId, info) => {
   // A real navigation (not an SPA pushState) resets the counter.
@@ -313,7 +328,7 @@ const HANDLERS = {
 
   // content script ↔ multi-page application session
   'hasanify:setTabArmed': (msg, sender) => setTabArmed(sender.tab?.id, msg.site, !!msg.armed).then(() => ({ ok: true })),
-  'hasanify:isTabArmed': async (msg, sender) => ({ ok: true, armed: (await getArmedSites(sender.tab?.id)).includes(msg.site) }),
+  'hasanify:isTabArmed': async (msg, sender) => ({ ok: true, ...(await isTabArmed(sender.tab?.id, msg.site)) }),
 
   // widget → open the profile dashboard
   'hasanify:openOptions': async (msg) => {
