@@ -44,6 +44,7 @@ async function init() {
   $('heroTitle').textContent = ats ? `Ready to fill this ${ats} application` : 'Autofill your application';
   if (!scriptable) {
     $('fill').disabled = true;
+    $('quickCopy').disabled = true;
     $('heroSub').textContent = 'Open a job application to get started.';
   }
 
@@ -81,6 +82,12 @@ $('fill').addEventListener('click', async () => {
   $('heroSub').textContent = res.stats.filled
     ? 'Done! Review the highlighted fields before submitting.'
     : 'No fillable fields found on this page.';
+});
+
+$('quickCopy').addEventListener('click', async () => {
+  const res = await send('hasanify:openQuickCopyActiveTab');
+  if (res?.ok === false) { $('heroSub').textContent = res.error; return; }
+  window.close(); // panel is now open on the page
 });
 
 $('settingsBtn').addEventListener('click', openDashboard);

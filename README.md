@@ -9,6 +9,8 @@ A Manifest V3 browser extension that autofills job applications — Workday, Gre
 - **Framework-safe injection**: native value setters plus `input`/`change`/`blur` events, real click sequences for radios, checkboxes and custom dropdowns (react-select, Workday listboxes), `DataTransfer` file uploads.
 - **Multi-step forms**: a `MutationObserver` fills new steps as they render, and fields wiped by late React hydration are re-filled.
 - **On-page assistant**: progress, filled count, a clickable "needs your attention" list, and an Attachments card for resume / cover-letter uploads.
+- **Quick copy** (`Alt+Shift+C` or the popup): every profile value — contact, address, links, each job and school, skills, custom answers, cover letter — searchable in the on-page panel. Click to copy, or click into a form field first and hit **Insert** to type it straight in (works with React inputs, selects and searchable dropdowns).
+- **Multi-page applications**: once you fill one page, later pages of the same application in that tab fill automatically (full page loads, class-toggled steps, SPA steps).
 - **Tailored applications**: resume uploads can be *automatic*, *ask me each time* (pick saved or a tailored file from the assistant), or *manual*; cover letters can be left entirely to you.
 - **AI profile builder**: copy a prompt into ChatGPT / Claude / Gemini with your resumes and questionnaires; it interviews you about anything missing and returns a profile you paste back and import.
 - **Profile dashboard**: personal info, links, experience, education, skills, work authorization, preferences, voluntary EEO answers, documents and custom Q&A — autosaved and validated against a JSON schema.

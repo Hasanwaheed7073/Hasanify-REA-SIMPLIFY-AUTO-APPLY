@@ -113,10 +113,27 @@ async function getActiveTabId() {
   return tab?.id;
 }
 
+/** Open the in-page panel on its Quick copy tab (top frame), injecting if needed. */
+async function openQuickCopy(tabId) {
+  const message = { type: 'hasanify:openQuickCopy' };
+  try {
+    return await chrome.tabs.sendMessage(tabId, message, { frameId: 0 });
+  } catch {
+    try {
+      await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: CONTENT_FILES });
+      await new Promise((r) => setTimeout(r, 300));
+      return await chrome.tabs.sendMessage(tabId, message, { frameId: 0 });
+    } catch (err) {
+      return { ok: false, error: `Quick copy isn't available on this page: ${err.message}` };
+    }
+  }
+}
+
 chrome.commands.onCommand.addListener(async (command) => {
-  if (command !== 'fill-form') return;
   const tabId = await getActiveTabId();
-  if (tabId != null) await triggerFill(tabId);
+  if (tabId == null) return;
+  if (command === 'fill-form') await triggerFill(tabId);
+  if (command === 'open-quick-copy') await openQuickCopy(tabId);
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -210,6 +227,10 @@ const HANDLERS = {
     // Frames report asynchronously; give them a moment before summarizing.
     await new Promise((r) => setTimeout(r, 300));
     return { ok: res?.ok !== false, error: res?.error, stats: summarizeTab(tabId) };
+  },
+  'hasanify:openQuickCopyActiveTab': async () => {
+    const tabId = await getActiveTabId();
+    return tabId == null ? { ok: false, error: 'No active tab' } : (await openQuickCopy(tabId)) ?? { ok: true };
   },
   'hasanify:getTabStats': async () => ({ ok: true, stats: summarizeTab(await getActiveTabId()) }),
 

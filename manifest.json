@@ -40,6 +40,10 @@
     "fill-form": {
       "suggested_key": { "default": "Alt+Shift+F" },
       "description": "Fill the job application on this page"
+    },
+    "open-quick-copy": {
+      "suggested_key": { "default": "Alt+Shift+C" },
+      "description": "Open Quick copy (profile values) on this page"
     }
   }
 }

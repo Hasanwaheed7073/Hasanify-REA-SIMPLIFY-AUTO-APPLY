@@ -31,6 +31,13 @@
     .fill:disabled { opacity: .75; cursor: default; }
     .fill svg { width: 17px; height: 17px; }
 
+    .quick { position: relative; z-index: 1; margin-top: 8px; width: 100%; height: 38px; border-radius: 11px;
+      border: 1px solid rgba(255,255,255,.35); background: rgba(255,255,255,.12); color: #fff; font-weight: 600; font-size: 13px;
+      display: flex; align-items: center; justify-content: center; gap: 8px; transition: background .15s; }
+    .quick:hover { background: rgba(255,255,255,.2); }
+    .quick:disabled { opacity: .6; cursor: default; }
+    .quick svg { width: 15px; height: 15px; }
+    .quick kbd { font: 600 10.5px var(--font); padding: 2px 6px; border-radius: 5px; background: rgba(255,255,255,.18); opacity: .9; }
     .results { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 14px 0; }
     .results.hidden { display: none; }
     .res { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
@@ -69,6 +76,7 @@
     <h2 id="heroTitle">Autofill your application</h2>
     <p id="heroSub">Fill every field Hasanify recognizes in one click.</p>
     <button class="fill" id="fill" data-icon-btn="bolt"><span id="fillText">Autofill this page</span></button>
+    <button class="quick" id="quickCopy" data-icon-btn="copy"><span>Quick copy my details</span><kbd>Alt+Shift+C</kbd></button>
   </section>
 
   <div class="results hidden" id="results">

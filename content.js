@@ -1506,7 +1506,62 @@
     return { matched, total };
   }
 
+  // ---- Quick copy: insert a profile value into the field the user last used --
+
+  const EDITABLE = 'input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=submit]):not([type=button]):not([type=reset]):not([type=image]), textarea, select';
+
+  function trackFocus() {
+    document.addEventListener('focusin', (e) => {
+      if (!e.isTrusted) return;
+      // composedPath()[0] reaches inside open shadow roots; our closed widget
+      // only exposes its host, which carries data-hasanify-ignore.
+      const el = e.composedPath?.()[0] ?? e.target;
+      if (!(el instanceof Element) || el.closest('[data-hasanify-ignore]')) return;
+      if (!el.matches(EDITABLE) && !el.isContentEditable) return;
+      state.lastFocused = { el, at: Date.now() };
+      emit('focus-target', {});
+    }, true);
+  }
+
+  /** The page field Quick copy would insert into, with a human label. */
+  function getFocusTarget() {
+    const t = state.lastFocused;
+    if (!t?.el?.isConnected || Date.now() - t.at > 15 * 60 * 1000) return null;
+    const el = t.el;
+    const label = (getExplicitLabel(el) || el.getAttribute('aria-label') || el.getAttribute('placeholder') || getNearbyText(el) || el.name || 'this field')
+      .replace(/\s*[*✱]\s*$/, '').replace(/\s+/g, ' ').trim().slice(0, 50);
+    return { label };
+  }
+
+  async function insertText(text) {
+    const el = state.lastFocused?.el;
+    if (!el?.isConnected) return false;
+    if (el.isContentEditable) {
+      el.focus();
+      document.execCommand('selectAll', false);
+      document.execCommand('insertText', false, text);
+    } else {
+      const field = { el, kind: getKind(el) ?? 'text' };
+      let status;
+      if (field.kind === 'select') status = fillSelect(field, toDesired(text));
+      else if (field.kind === 'combobox') status = await fillCombobox(field, toDesired(text));
+      else if (field.kind === 'listbox') status = await fillListbox(field, toDesired(text));
+      else { setValueAndNotify(el, text); status = el.value ? 'filled' : 'failed'; }
+      if (status !== 'filled') return false;
+    }
+    // Hand focus back so the user can keep typing / tab onwards.
+    ensureStyles();
+    el.focus({ preventScroll: true });
+    el.classList.remove('hasanify-pulse');
+    void el.offsetWidth;
+    el.classList.add('hasanify-pulse');
+    setTimeout(() => el.classList.remove('hasanify-pulse'), 1800);
+    return true;
+  }
+
   globalThis.HasanifyEngine = Object.freeze({
+    getFocusTarget,
+    insertText,
     events,
     fill: () => { setArmed(true); return runAutofill({ force: true }); },
     preview,
@@ -1683,6 +1738,8 @@
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && Object.keys(changes).some((k) => k.startsWith('hasanify.'))) state.profile = null;
   });
+
+  trackFocus();
 
   (async function init() {
     try {
