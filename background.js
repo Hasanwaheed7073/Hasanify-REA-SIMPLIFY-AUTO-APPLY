@@ -152,7 +152,33 @@ function summarizeTab(tabId) {
   return sum;
 }
 
-chrome.tabs.onRemoved.addListener((tabId) => tabStats.delete(tabId));
+chrome.tabs.onRemoved.addListener((tabId) => {
+  tabStats.delete(tabId);
+  chrome.storage.session.remove(armKey(tabId)).catch(() => {});
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Tab "application session" arming
+// ───────────────────────────────────────────────────────────────────────────
+// A fill only lives as long as its document. Many applications are several
+// full page loads (iCIMS, Taleo, SuccessFactors, company career sites), so
+// once the user fills anything in a tab we remember that site for the tab and
+// every later page of it auto-fills. Kept in storage.session so it survives
+// service-worker restarts but not the browser session.
+
+const armKey = (tabId) => `hasanify.armed.${tabId}`;
+
+async function getArmedSites(tabId) {
+  const { [armKey(tabId)]: sites } = await chrome.storage.session.get(armKey(tabId));
+  return sites ?? [];
+}
+
+async function setTabArmed(tabId, site, armed) {
+  if (tabId == null || !site) return;
+  const sites = new Set(await getArmedSites(tabId));
+  if (armed) sites.add(site); else sites.delete(site);
+  await chrome.storage.session.set({ [armKey(tabId)]: [...sites] });
+}
 chrome.tabs.onUpdated.addListener((tabId, info) => {
   // A real navigation (not an SPA pushState) resets the counter.
   if (info.status === 'loading' && info.url) {
@@ -186,6 +212,10 @@ const HANDLERS = {
     return { ok: res?.ok !== false, error: res?.error, stats: summarizeTab(tabId) };
   },
   'hasanify:getTabStats': async () => ({ ok: true, stats: summarizeTab(await getActiveTabId()) }),
+
+  // content script ↔ multi-page application session
+  'hasanify:setTabArmed': (msg, sender) => setTabArmed(sender.tab?.id, msg.site, !!msg.armed).then(() => ({ ok: true })),
+  'hasanify:isTabArmed': async (msg, sender) => ({ ok: true, armed: (await getArmedSites(sender.tab?.id)).includes(msg.site) }),
 
   // widget → open the profile dashboard
   'hasanify:openOptions': async (msg) => {

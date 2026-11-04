@@ -1367,6 +1367,8 @@
 
       const fields = scanFields();
       const stats = { filled: 0, matched: 0, total: fields.length, unmatched: [] };
+      // Nothing new (typical for class/focus churn): stay silent — no progress UI, no report.
+      if (!fields.length && !force) return state.lastStats ?? stats;
       emit('run-start', { total: fields.length });
 
       let done = 0;
@@ -1506,7 +1508,7 @@
 
   globalThis.HasanifyEngine = Object.freeze({
     events,
-    fill: () => { state.armed = true; return runAutofill({ force: true }); },
+    fill: () => { setArmed(true); return runAutofill({ force: true }); },
     preview,
     attachToUpload,
     hasSavedResume: () => !!state.profile?.documents?.resume?.dataUrl,
@@ -1516,7 +1518,7 @@
     getSettings: () => state.settings,
     getProfile: () => state.profile,
     loadContext,
-    setArmed: (v) => { state.armed = !!v; if (v) scheduleRun(); emit('armed', { armed: state.armed }); },
+    setArmed: (v) => { setArmed(v); if (v) scheduleRun(); emit('armed', { armed: state.armed }); },
   });
 
   function scheduleRun() {
@@ -1543,9 +1545,16 @@
           if (n.matches(FIELD_SELECTOR) || n.querySelector(FIELD_SELECTOR) || n.shadowRoot) return true;
         }
       } else if (m.type === 'attributes') {
-        // Hidden → visible transitions (accordion steps, conditional questions).
+        // Hidden → visible transitions: wizard steps toggled by class
+        // (`.step.active`), accordions, conditional questions.
         const t = m.target;
-        if (t.nodeType === Node.ELEMENT_NODE && (t.matches(FIELD_SELECTOR) || t.querySelector(FIELD_SELECTOR))) return true;
+        if (t.nodeType !== Node.ELEMENT_NODE || t.closest?.('[data-hasanify-ignore]')) continue;
+        if (t.matches(FIELD_SELECTOR)) {
+          // A control's own class flips on focus/validation: ignore; other attrs count.
+          if (m.attributeName !== 'class') return true;
+        } else if (t.querySelector(FIELD_SELECTOR)) {
+          return true;
+        }
       }
     }
     return false;
@@ -1573,8 +1582,10 @@
       childList: true,
       subtree: true,
       attributes: true,
-      // `class` is intentionally excluded: focus/hover styling would cause constant re-scans.
-      attributeFilter: ['style', 'hidden', 'aria-hidden', 'disabled'],
+      // `class` is included because many wizards reveal the next step by
+      // toggling a class. Focus-styling noise is cheap: a scan that finds no
+      // new fields returns immediately (see runAutofill).
+      attributeFilter: ['class', 'style', 'hidden', 'aria-hidden', 'disabled'],
     });
   }
 
@@ -1585,12 +1596,51 @@
     // would silently detach an observer bound to the old documentElement.
     observeRoot(document);
     window.addEventListener('popstate', () => state.armed && scheduleRun());
+    // Back/forward cache restores a page without re-running content scripts.
+    window.addEventListener('pageshow', (e) => e.persisted && state.armed && scheduleRun());
+    // Safety net for step changes that produce no observable mutation (CSS
+    // transitions, transforms, canvas-driven UIs): after a REAL click on a
+    // button/link (Next, Continue, Save & continue), look again twice.
+    document.addEventListener('click', (e) => {
+      if (!e.isTrusted || !state.armed) return;
+      if (!e.target.closest?.('button, a, [role="button"], input[type="submit"], input[type="button"]')) return;
+      setTimeout(scheduleRun, 900);
+      setTimeout(scheduleRun, 2500);
+    }, true);
   }
 
   function teardown() {
     state.observer?.disconnect();
     state.armed = false;
     clearTimeout(state.debounceTimer);
+  }
+
+  // ---- Application-session arming (survives full page loads) ---------------
+
+  /** Registrable-ish site: "wd5.myworkdayjobs.com" → "myworkdayjobs.com", "careers.acme.co.uk" → "acme.co.uk". */
+  function siteOf(host) {
+    const parts = host.split('.');
+    if (parts.length <= 2 || /^\d+$/.test(parts.at(-1))) return host;
+    const sld = parts.at(-2);
+    const ccSecondLevel = parts.at(-1).length === 2 && sld.length <= 3; // co.uk, com.au, co.in
+    return parts.slice(ccSecondLevel ? -3 : -2).join('.');
+  }
+
+  /** Arm/disarm auto-fill for this document AND remember it for the tab's later pages. */
+  function setArmed(armed) {
+    const changed = state.armed !== !!armed;
+    state.armed = !!armed;
+    if (changed) emit('armed', { armed: state.armed });
+    chrome.runtime.sendMessage({ type: 'hasanify:setTabArmed', site: siteOf(location.hostname), armed: state.armed }).catch(() => {});
+  }
+
+  async function isTabArmed() {
+    try {
+      const res = await chrome.runtime.sendMessage({ type: 'hasanify:isTabArmed', site: siteOf(location.hostname) });
+      return !!res?.armed;
+    } catch {
+      return false;
+    }
   }
 
   function isKnownAts() {
@@ -1607,7 +1657,7 @@
       // tabs.sendMessage reaches every frame and the caller gets the FIRST reply.
       // Field-less subframes (captcha, ads) stay silent so the reply comes from the form.
       if (window !== window.top && !queryAllDeep(FIELD_SELECTOR).length) return false;
-      state.armed = true; // after one manual fill, keep following later steps of the flow
+      setArmed(true); // after one manual fill, keep following later steps AND later pages
       runAutofill({ force: !!msg.force }).then((stats) => sendResponse({ ok: true, stats }));
       return true;
     }
@@ -1641,8 +1691,12 @@
       return; // extension reloaded/unavailable; manual trigger will re-inject
     }
     startObserver();
-    if (state.settings.autoFillOnKnownATS && isKnownAts()) {
+    // Auto-fill this page when it's a known ATS, or when the user already
+    // filled an earlier page of this application in the same tab.
+    const autoAts = state.settings.autoFillOnKnownATS && isKnownAts();
+    if (autoAts || await isTabArmed()) {
       state.armed = true;
+      emit('armed', { armed: true });
       await waitForQuiet(); // let the SPA finish hydrating before the first pass
       scheduleRun();
     }
