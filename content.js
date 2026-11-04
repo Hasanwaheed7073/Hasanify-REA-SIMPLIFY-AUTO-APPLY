@@ -112,6 +112,8 @@
     registry: new Map(),
     filledEver: new Set(), // every element ever filled on this page (multi-step total)
     uploads: new Map(),    // Element -> upload entry (resume / cover letter fields)
+    learn: new Map(),      // Element -> learning entry (fields watched for user answers)
+    reportedMissed: new Set(), // question keys already sent to the missed-questions history
     verifyTimers: [],
     lastStats: null,
   };
@@ -641,19 +643,59 @@
     return score;
   }
 
-  /** Match a user-defined customAnswer against the field's question text. */
+  // ---- Learned-answer matching ---------------------------------------------
+  // Learned answers store the whole question with the company replaced by
+  // "{company}" ("why do you want to work at {company}"), so one answer serves
+  // every employer. They match by word overlap, not substring.
+
+  const STOP = new Set('a an the to of in on at for and or you your do does did are is be been have has had please if any this that with we us our i my me will would can could should from by as it its about'.split(' '));
+  const contentTokens = (s) => new Set(norm(s).split(' ').filter((w) => w.length > 1 && !STOP.has(w)));
+
+  function similarity(a, b) {
+    const A = contentTokens(a), B = contentTokens(b);
+    if (!A.size || !B.size) return 0;
+    let inter = 0;
+    for (const w of A) if (B.has(w)) inter++;
+    return inter / (A.size + B.size - inter);
+  }
+
+  let cachedCompany = null;
+  function currentCompany() {
+    if (cachedCompany === null) {
+      try { cachedCompany = getPageInfo().company || ''; } catch { cachedCompany = ''; }
+    }
+    return cachedCompany;
+  }
+
+  /** Replace the employer's name with {company} so text transfers between applications. */
+  function templatize(text) {
+    const c = currentCompany();
+    if (!text || !c || c.length < 3) return text;
+    return text.replace(new RegExp(`\\b${escapeRx(c)}\\b`, 'gi'), '{company}');
+  }
+  const fillTemplate = (text) => String(text ?? '').replace(/\{company\}/gi, currentCompany() || 'your company');
+  const questionKey = (question) => norm(templatize(question));
+
+  /** Match a custom/learned answer against the field's question text. */
   function matchCustomAnswer(sig) {
     const question = sig.rawLabel || sig.aria || sig.placeholder;
     if (!question) return null;
     const nq = norm(question);
+    const key = questionKey(question);
+    let best = null, bestScore = 0;
     for (const ca of state.profile.customAnswers ?? []) {
-      if (!ca?.question) continue;
+      if (!ca?.question || ca.answer == null || ca.answer === '') continue;
       try {
-        const hit = ca.isRegex ? new RegExp(ca.question, 'i').test(question) : nq.includes(norm(ca.question));
-        if (hit) return ca;
+        if (ca.source === 'learned') {
+          const caKey = ca.key || norm(ca.question);
+          const score = caKey === key ? 1 : similarity(caKey, key);
+          if (score >= 0.75 && score > bestScore) { best = ca; bestScore = score; }
+        } else if (ca.isRegex ? new RegExp(ca.question, 'i').test(question) : nq.includes(norm(ca.question))) {
+          return { ...ca, answer: fillTemplate(ca.answer) }; // explicit phrases win immediately
+        }
       } catch { /* invalid user regex: ignore */ }
     }
-    return null;
+    return best ? { ...best, answer: fillTemplate(best.answer) } : null;
   }
 
   /** Returns { def, score } | { custom } | null */
@@ -1378,6 +1420,7 @@
       emit('run-start', { total: fields.length });
 
       let done = 0;
+      const missedItems = [];
       for (const field of fields) {
         if (!field.el.isConnected) continue;
         const { status, key, sig } = await processField(field);
@@ -1386,6 +1429,17 @@
           ...prev, key, status, field, label: sig?.rawLabel ?? '',
           retries: prev.retries + (status === 'failed' ? 1 : 0),
         });
+
+        // Report + learn: watch missed fields for the user's answer, filled ones for corrections.
+        if (MISSED.has(status) || status === 'filled') watchForLearning(field, sig, status);
+        if (MISSED.has(status) && isLearnable(field, sig?.rawLabel)) {
+          missedItems.push({
+            key: questionKey(sig.rawLabel),
+            question: templatize(cleanLabel(sig.rawLabel)),
+            reason: REASONS[status],
+            required: isRequired(field, sig.rawLabel),
+          });
+        }
 
         if (status !== 'unmatched') stats.matched++;
         else if (sig?.rawLabel) stats.unmatched.push(sig.rawLabel.slice(0, 120));
@@ -1400,6 +1454,7 @@
       }
 
       state.lastStats = stats;
+      recordMissed(missedItems);
       const summary = getSummary();
       emit('run-end', summary);
       if (fields.length) {
@@ -1431,6 +1486,7 @@
    * (bounded by CONFIG.MAX_RETRIES per field).
    */
   function verifyFilled() {
+    refreshBaselines(); // values have settled (masks, hydration): edits from here are the user's
     let reverted = 0;
     for (const [el, info] of state.registry) {
       if (info.status !== 'filled' || !info.field || !el.isConnected) continue;
@@ -1478,6 +1534,190 @@
     return isVisible(field.el) ? field.el : (field.el.labels?.[0] ?? field.el.parentElement ?? field.el);
   }
 
+  // ═════════════════════════════════════════════════════════════════════════
+  // Unfilled-field report + learning from the user
+  // ═════════════════════════════════════════════════════════════════════════
+  //
+  // Every field Hasanify could not fill is reported (widget + history in the
+  // dashboard). Those fields — and fields it DID fill — are then watched: when
+  // the user answers a missed question or corrects a filled value through real
+  // (trusted) interaction, the answer becomes a learned custom answer and is
+  // used automatically next time.
+
+  const MISSED = new Set(['unmatched', 'no-value', 'no-option', 'failed']);
+  const REASONS = { unmatched: 'Not recognized', 'no-value': 'No saved answer', 'no-option': 'No matching option', failed: 'Couldn’t fill' };
+
+  /** Never learned or reported: secrets, identifiers, payment, consent, search boxes. */
+  const NEVER_LEARN = /password|passcode|\bssn\b|social security|national (id|insurance)|\bnin\b|tax (id|number)|passport (no|number)|licen[cs]e (no|number)|credit card|card number|\bcvv\b|\bcvc\b|expir(y|ation)|\bbank\b|routing|\biban\b|account number|signature|sign here|captcha|verification code|\botp\b|one.?time|security (question|answer)|today.?s date|date signed|\bsearch\b|i (agree|acknowledge|consent|certify|confirm)|terms (and|&) conditions|privacy (policy|notice)/i;
+
+  const cleanLabel = (s) => String(s ?? '').replace(/\s*[*✱]\s*$/, '').replace(/\s+/g, ' ').trim();
+
+  function isLearnable(field, label) {
+    if (field.kind === 'file' || field.kind === 'checkbox') return false; // files; single consent checkboxes
+    const q = cleanLabel(label);
+    return q.length >= 3 && q.length <= 250 && !NEVER_LEARN.test(q) && !state.uploads.has(field.el);
+  }
+
+  /** The user's current answer in any kind of control ('' if empty). */
+  function readAnswer(field) {
+    const { el, kind } = field;
+    switch (kind) {
+      case 'text':
+      case 'textarea':
+        return el.value.trim();
+      case 'select': {
+        const opt = el.options[el.selectedIndex];
+        const t = opt ? textOf(opt) : '';
+        return opt && opt.value !== '' && !PLACEHOLDER_OPTION.test(t) ? t : '';
+      }
+      case 'radio':
+        return field.members.filter((m) => m.checked).map(getOptionLabel).join(', ').trim();
+      case 'checkbox-group':
+        return field.members.filter((m) => m.checked).map(getOptionLabel).join(', ').trim();
+      case 'combobox': {
+        let node = el;
+        for (let i = 0; i < 5 && (node = node.parentElement); i++) {
+          if (node.querySelectorAll('[role="combobox"]').length > 1) break;
+          const shown = node.querySelector('[class*="single-value"], [class*="singleValue"], [data-automation-id="selectedItem"]');
+          if (shown && textOf(shown)) return textOf(shown);
+        }
+        return el.value.trim();
+      }
+      case 'listbox': {
+        const t = textOf(el);
+        return t && !PLACEHOLDER_OPTION.test(t) ? t : '';
+      }
+      default:
+        return '';
+    }
+  }
+
+  let learnSeq = 0;
+  /** Start watching a field for user answers. origin: 'missed' | 'filled'. */
+  function watchForLearning(field, sig, status) {
+    const label = sig?.rawLabel;
+    if (!isLearnable(field, label)) return;
+    const existing = state.learn.get(field.el);
+    if (existing) { existing.origin = MISSED.has(status) ? 'missed' : existing.origin; return; }
+    state.learn.set(field.el, {
+      id: ++learnSeq,
+      field,
+      question: cleanLabel(label),
+      origin: MISSED.has(status) ? 'missed' : 'filled',
+      reason: REASONS[status] ?? '',
+      kind: ['text', 'textarea'].includes(field.kind) ? 'text' : 'choice',
+      baseline: null,   // value after our fill settles; edits away from it are corrections
+      touched: false,   // set only by TRUSTED user interaction inside this field
+      answer: '',
+      status: 'idle',   // idle | pending | saved | dismissed
+    });
+  }
+
+  /** Our own fills must not look like corrections: snapshot values once they settle. */
+  function refreshBaselines() {
+    for (const entry of state.learn.values()) {
+      if (entry.origin === 'filled' && !entry.touched && entry.field.el.isConnected) entry.baseline = readAnswer(entry.field);
+    }
+  }
+
+  function entryForTarget(target) {
+    for (const entry of state.learn.values()) {
+      const f = entry.field;
+      if (f.el === target || f.el.contains?.(target) || f.members?.some((m) => m === target || m.labels?.[0]?.contains(target))
+          || (f.container && f.container.contains(target)) || target?.closest?.('label')?.control === f.el) return entry;
+      // react-select / Workday: the click lands on the control wrapper around the input
+      const wrap = f.el.closest('[class*="select__control"], [class*="container"], [data-automation-id^="formField"]');
+      if (wrap && wrap.contains(target) && wrap.querySelectorAll(FIELD_SELECTOR).length === 1) return entry;
+    }
+    return null;
+  }
+
+  let harvestTimer = 0;
+  function onUserInteraction(e) {
+    if (!e.isTrusted || state.filling || state.settings?.learningMode === 'off') return;
+    const target = e.composedPath?.()[0] ?? e.target;
+    if (!(target instanceof Element) || target.closest('[data-hasanify-ignore]')) return;
+    const entry = entryForTarget(target);
+    if (entry) entry.touched = true;
+    clearTimeout(harvestTimer);
+    harvestTimer = setTimeout(harvestAnswers, 600);
+  }
+
+  /** Collect answers from touched fields; save (auto) or offer (ask). */
+  function harvestAnswers() {
+    if (state.filling) return;
+    const mode = state.settings?.learningMode ?? 'ask';
+    let changed = false;
+    for (const entry of state.learn.values()) {
+      if (!entry.touched || !entry.field.el.isConnected) continue;
+      const answer = readAnswer(entry.field);
+      if (!answer || answer === entry.answer) continue;
+      if (entry.origin === 'filled' && answer === entry.baseline) continue; // not a correction
+      entry.answer = answer;
+      changed = true;
+      if (mode === 'auto') saveLearned(entry.id);
+      else entry.status = 'pending';
+    }
+    if (changed) emit('learning-changed', {});
+  }
+
+  async function saveLearned(id) {
+    const entry = [...state.learn.values()].find((e) => e.id === id);
+    if (!entry?.answer) return false;
+    entry.status = 'saved';
+    emit('learning-changed', {});
+    const res = await chrome.runtime.sendMessage({
+      type: 'hasanify:learnAnswer',
+      question: templatize(entry.question),
+      key: questionKey(entry.question),
+      answer: templatize(entry.answer),
+      kind: entry.kind,
+      host: location.hostname,
+    }).catch(() => null);
+    if (!res?.ok) { entry.status = 'pending'; emit('learning-changed', {}); return false; }
+    return true;
+  }
+
+  function dismissLearned(id) {
+    const entry = [...state.learn.values()].find((e) => e.id === id);
+    if (entry) { entry.status = 'dismissed'; emit('learning-changed', {}); }
+  }
+
+  /** Send newly missed questions to the background's history (once per page). */
+  function recordMissed(items) {
+    const fresh = items.filter((i) => !state.reportedMissed.has(i.key));
+    if (!fresh.length) return;
+    fresh.forEach((i) => state.reportedMissed.add(i.key));
+    chrome.runtime.sendMessage({ type: 'hasanify:recordMissed', items: fresh, host: location.hostname }).catch(() => {});
+  }
+
+  /** Report rows for the widget: every unfilled field with its learning state. */
+  function getReport() {
+    const rows = [];
+    for (const info of state.registry.values()) {
+      const f = info.field;
+      if (!f || !f.el.isConnected || state.uploads.has(f.el)) continue;
+      const entry = state.learn.get(f.el);
+      const missed = MISSED.has(info.status);
+      const corrected = entry?.origin === 'filled' && entry.status !== 'idle';
+      if (!missed && !corrected) continue;
+      if (missed && !info.label) continue;
+      rows.push({
+        id: entry?.id ?? null,
+        label: cleanLabel(info.label) || 'Unlabeled field',
+        reason: corrected ? 'You changed this' : REASONS[info.status],
+        required: isRequired(f, info.label),
+        answered: hasExistingValue(f),
+        learn: entry && entry.status !== 'idle' ? { status: entry.status, answer: entry.answer } : null,
+        learnable: !!entry,
+        el: focusTarget(f),
+      });
+    }
+    // Required unanswered first, then learning prompts, then the rest.
+    const rank = (r) => (r.required && !r.answered ? 0 : r.learn?.status === 'pending' ? 1 : 2);
+    return rows.sort((a, b) => rank(a) - rank(b));
+  }
+
   /**
    * Snapshot for the UI: how many fields were filled, plus the fields the
    * user still has to deal with (required + empty, or we failed on them).
@@ -1498,7 +1738,8 @@
         attention.push({ label: (info.label || 'Unlabeled field').replace(/\s*\*\s*$/, ''), el: focusTarget(info.field), status: info.status });
       }
     }
-    return { filled, matched, seen, attention, uploads: getUploads(), armed: state.armed };
+    return { filled, matched, seen, attention, report: getReport(), uploads: getUploads(), armed: state.armed,
+      learningMode: state.settings?.learningMode ?? 'ask' };
   }
 
   /** Classify (without filling) to decide whether this page is an application. */
@@ -1597,6 +1838,8 @@
   }
 
   globalThis.HasanifyEngine = Object.freeze({
+    saveLearned,
+    dismissLearned,
     getFocusTarget,
     insertText,
     events,
@@ -1657,7 +1900,9 @@
     // checking the URL on DOM churn is a cheap, reliable substitute.
     if (location.href !== state.lastUrl) {
       state.lastUrl = location.href;
+      cachedCompany = null;
       pruneRegistry();
+      for (const el of state.learn.keys()) if (!el.isConnected) state.learn.delete(el);
       for (const el of state.uploads.keys()) if (!el.isConnected) state.uploads.delete(el);
     }
     if (!mutationsAddFields(mutations)) return;
@@ -1785,10 +2030,26 @@
 
   // Profile edited in the popup → reload lazily on the next run.
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && Object.keys(changes).some((k) => k.startsWith('hasanify.'))) state.profile = null;
+    if (area !== 'local') return;
+    // Settings apply immediately (e.g. learning mode switched in the side panel).
+    if (changes['hasanify.settings']?.newValue) state.settings = mergeWithDefaults(DEFAULT_SETTINGS, changes['hasanify.settings'].newValue);
+    if ('hasanify.profile' in changes) state.profile = null; // reloaded lazily on the next run
   });
 
   trackFocus();
+  // Learning: typing/clicking marks a field as user-touched; change/blur/click harvests answers.
+  for (const type of ['input', 'keydown', 'change', 'click', 'focusout']) {
+    document.addEventListener(type, (e) => {
+      if (type === 'input' || type === 'keydown') {
+        if (!e.isTrusted || state.filling) return;
+        const t = e.composedPath?.()[0] ?? e.target;
+        const entry = t instanceof Element ? entryForTarget(t) : null;
+        if (entry) entry.touched = true;
+        return;
+      }
+      onUserInteraction(e);
+    }, true);
+  }
 
   (async function init() {
     try {

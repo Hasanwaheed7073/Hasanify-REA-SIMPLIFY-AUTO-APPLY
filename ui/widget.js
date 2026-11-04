@@ -155,6 +155,30 @@
     .item:hover { background: #FEF0C7; }
     .item .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
     .item .go { width: 16px; height: 16px; flex: none; opacity: .7; }
+
+    /* Unfilled-field report */
+    .st-count { margin-left: 4px; padding: 1px 7px; border-radius: 99px; background: var(--soft); color: var(--ink-2); font-size: 11px; letter-spacing: 0; }
+    .report-tip { margin: -2px 2px 8px; font-size: 11.5px; color: var(--muted); }
+    .report-tip:empty { display: none; }
+    .ritem { display: flex; flex-direction: column; }
+    .item .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .item .meta { font-size: 11px; opacity: .8; font-weight: 500; }
+    .item.optional { background: var(--soft); color: var(--ink-2); }
+    .item.optional:hover { background: #ECEEF3; }
+    .item.done { background: var(--ok-bg); color: #05603A; }
+    .item.done:hover { background: #DCFAE6; }
+    .learn { margin: -4px 0 0; padding: 10px 10px 9px 12px; border-radius: 0 0 10px 10px; background: #F4F3FF; border: 1px solid #DDDBFB;
+      border-top: 0; font-size: 12px; color: var(--ink-2); }
+    .learn q { display: block; margin: 3px 0 7px; color: var(--ink); font-weight: 500; quotes: "“" "”";
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .learn .acts { display: flex; gap: 6px; }
+    .learn button { height: 26px; padding: 0 10px; border-radius: 7px; font-size: 12px; font-weight: 600; }
+    .learn .save { color: #fff; background: linear-gradient(135deg, var(--brand), var(--brand-2)); }
+    .learn .skip { color: var(--muted); }
+    .learn .skip:hover { background: #fff; color: var(--ink); }
+    .learn.saved { background: var(--ok-bg); border-color: #ABEFC6; color: #05603A; font-weight: 600; }
+    .more { margin-top: 6px; width: 100%; height: 30px; border-radius: 8px; color: var(--brand); font-size: 12px; font-weight: 600; }
+    .more:hover { background: var(--soft); }
     .all-done { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px;
       background: var(--ok-bg); color: #05603A; font-weight: 500; margin-top: 14px; }
     .all-done .ico { width: 18px; height: 18px; flex: none; }
@@ -264,8 +288,10 @@
           <div class="all-done hidden" data-ref="allDone"><span class="ico">${I.check}</span>Everything we know is filled. Review &amp; submit!</div>
 
           <div class="hidden" data-ref="attentionWrap">
-            <div class="section-title">Needs your attention</div>
+            <div class="section-title">Unfilled fields <span class="st-count" data-ref="reportCount"></span></div>
+            <div class="report-tip" data-ref="reportTip"></div>
             <div class="list" data-ref="attention"></div>
+            <button class="more hidden" data-ref="reportMore"></button>
           </div>
 
           <div class="profile-card hidden" data-ref="profileCard">
@@ -335,23 +361,13 @@
 
     const showResults = ui.hasRun && !ui.running;
     const pendingUploads = renderUploads(summary.uploads ?? [], showResults);
-    const todo = summary.attention.length + pendingUploads;
+    const pendingLearn = (summary.report ?? []).filter((r) => r.learn?.status === 'pending').length;
+    const todo = summary.attention.length + pendingUploads + pendingLearn;
     ref('stats').classList.toggle('hidden', !showResults);
     ref('filled').textContent = summary.filled;
     ref('todo').textContent = todo;
 
-    const list = ref('attention');
-    list.replaceChildren();
-    for (const item of summary.attention.slice(0, 12)) {
-      const b = document.createElement('button');
-      b.className = 'item';
-      b.innerHTML = `<span class="t"></span><span class="go">${I.arrow}</span>`;
-      b.querySelector('.t').textContent = item.label;
-      b.title = item.status === 'no-option' ? 'Couldn’t find a matching option — pick one manually' : 'Required — fill this in';
-      b.addEventListener('click', () => jumpTo(item.el));
-      list.appendChild(b);
-    }
-    ref('attentionWrap').classList.toggle('hidden', !showResults || !summary.attention.length);
+    renderReport(summary, showResults);
     ref('allDone').classList.toggle('hidden', !showResults || todo > 0 || !summary.filled);
 
     ref('ctaText').textContent = ui.running ? 'Filling…' : ui.hasRun ? 'Autofill again' : 'Autofill this page';
@@ -367,6 +383,65 @@
 
     renderProfileCard();
     applyTop();
+  }
+
+  /**
+   * Unfilled-field report: every field Hasanify couldn't fill, why, and — when
+   * the user answers one on the page — an offer to remember that answer.
+   */
+  function renderReport(summary, show) {
+    const rows = summary.report ?? [];
+    const mode = summary.learningMode ?? 'ask';
+    const list = ref('attention');
+    list.replaceChildren();
+
+    // Always show what needs action; collapse optional, untouched rows.
+    const important = rows.filter((r) => (r.required && !r.answered) || r.learn || r.answered);
+    const optional = rows.filter((r) => !important.includes(r));
+    const visible = ui.showAllMissed ? rows : [...important, ...optional.slice(0, Math.max(0, 6 - important.length))];
+
+    for (const r of visible) {
+      const wrap = document.createElement('div');
+      wrap.className = 'ritem';
+      const b = document.createElement('button');
+      const state = r.answered ? 'done' : r.required ? '' : 'optional';
+      b.className = `item ${state}`;
+      b.innerHTML = `<span class="txt"><span class="t"></span><span class="meta"></span></span><span class="go">${I.arrow}</span>`;
+      b.querySelector('.t').textContent = r.label;
+      b.querySelector('.meta').textContent = [r.answered ? '✓ Answered by you' : r.required ? 'Required' : 'Optional', r.reason].filter(Boolean).join(' · ');
+      b.title = 'Show this field on the page';
+      b.addEventListener('click', () => jumpTo(r.el));
+      wrap.append(b);
+
+      if (r.learn?.status === 'pending') {
+        const learn = document.createElement('div');
+        learn.className = 'learn';
+        learn.innerHTML = `Remember your answer for next time?<q></q><div class="acts"><button class="save">Save answer</button><button class="skip">Not now</button></div>`;
+        learn.querySelector('q').textContent = r.learn.answer;
+        learn.querySelector('.save').addEventListener('click', () => engine.saveLearned(r.id));
+        learn.querySelector('.skip').addEventListener('click', () => engine.dismissLearned(r.id));
+        wrap.append(learn);
+      } else if (r.learn?.status === 'saved') {
+        const learn = document.createElement('div');
+        learn.className = 'learn saved';
+        learn.textContent = '✓ Learned — Hasanify fills this next time';
+        wrap.append(learn);
+      }
+      list.append(wrap);
+    }
+
+    const hidden = rows.length - visible.length;
+    const more = ref('reportMore');
+    more.classList.toggle('hidden', !hidden && !ui.showAllMissed);
+    more.textContent = ui.showAllMissed ? 'Show less' : `Show ${hidden} more optional field${hidden === 1 ? '' : 's'}`;
+    more.onclick = () => { ui.showAllMissed = !ui.showAllMissed; render(); };
+
+    ref('reportCount').textContent = rows.length;
+    ref('reportTip').textContent = mode === 'off' ? ''
+      : rows.some((r) => !r.answered && r.learnable)
+        ? (mode === 'auto' ? 'Answer these on the page — Hasanify learns your answers automatically.' : 'Answer these on the page — Hasanify will offer to remember them.')
+        : '';
+    ref('attentionWrap').classList.toggle('hidden', !show || !rows.length);
   }
 
   const RESUME_MODE_LABEL = { auto: 'Attach saved resume', ask: 'Ask me each time', manual: 'I upload it myself' };
@@ -499,6 +574,7 @@
   });
 
   engine.events.addEventListener('uploads-changed', () => host.isConnected && render());
+  engine.events.addEventListener('learning-changed', () => host.isConnected && render());
 
   engine.events.addEventListener('armed', render);
 

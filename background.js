@@ -156,6 +156,60 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────
+// Learning: answers the user gave, and questions Hasanify missed
+// ───────────────────────────────────────────────────────────────────────────
+
+const MISSED_KEY = 'hasanify.missed';          // { [key]: { question, count, firstSeen, lastSeen, hosts, reason, required, learned } }
+const MISSED_IGNORED_KEY = 'hasanify.missedIgnored'; // [key]
+const MISSED_CAP = 400;
+
+/** Upsert a learned custom answer (keyed by normalized, {company}-templated question). */
+async function learnAnswer({ question, key, answer, kind, host }) {
+  if (!question || !key || !answer) return { ok: false, error: 'Nothing to learn' };
+  const profile = await getProfile();
+  const list = profile.customAnswers ?? [];
+  const existing = list.find((c) => c.source === 'learned' && c.key === key);
+  const now = Date.now();
+  if (existing) Object.assign(existing, { answer, kind, learnedFrom: host ?? existing.learnedFrom, updatedAt: now });
+  else list.push({ question, answer, isRegex: false, source: 'learned', key, kind, learnedFrom: host ?? '', updatedAt: now });
+  profile.customAnswers = list;
+  const res = await saveProfile(profile);
+  if (!res.ok) return res;
+
+  const { [MISSED_KEY]: missed = {} } = await chrome.storage.local.get(MISSED_KEY);
+  if (missed[key]) {
+    missed[key].learned = true;
+    await chrome.storage.local.set({ [MISSED_KEY]: missed });
+  }
+  return { ok: true };
+}
+
+async function recordMissed(items, host) {
+  const { [MISSED_KEY]: missed = {}, [MISSED_IGNORED_KEY]: ignored = [] } = await chrome.storage.local.get([MISSED_KEY, MISSED_IGNORED_KEY]);
+  const profile = await getProfile();
+  const learnedKeys = new Set((profile.customAnswers ?? []).filter((c) => c.source === 'learned').map((c) => c.key));
+  const now = Date.now();
+  for (const it of items ?? []) {
+    if (!it?.key || ignored.includes(it.key)) continue;
+    const row = missed[it.key] ?? { question: it.question, count: 0, firstSeen: now, hosts: [] };
+    row.count += 1;
+    row.lastSeen = now;
+    row.reason = it.reason;
+    row.required = !!(row.required || it.required);
+    row.learned = learnedKeys.has(it.key);
+    if (host && !row.hosts.includes(host)) row.hosts = [host, ...row.hosts].slice(0, 5);
+    missed[it.key] = row;
+  }
+  // Cap history: drop the least recently seen.
+  const keys = Object.keys(missed);
+  if (keys.length > MISSED_CAP) {
+    keys.sort((a, b) => missed[a].lastSeen - missed[b].lastSeen).slice(0, keys.length - MISSED_CAP).forEach((k) => delete missed[k]);
+  }
+  await chrome.storage.local.set({ [MISSED_KEY]: missed });
+  return { ok: true };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Stats / badge
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -244,6 +298,10 @@ const HANDLERS = {
     await new Promise((r) => setTimeout(r, 300));
     return { ok: res?.ok !== false, error: res?.error, stats: summarizeTab(tabId) };
   },
+  // content script → learning
+  'hasanify:learnAnswer': (msg) => learnAnswer(msg),
+  'hasanify:recordMissed': (msg) => recordMissed(msg.items, msg.host),
+
   // content script → "user focused this field" (fuel for the side panel's Insert)
   'hasanify:focusTarget': (msg, sender) => {
     if (sender.tab?.id != null) focusByTab.set(sender.tab.id, { frameId: sender.frameId ?? 0, label: msg.label, at: msg.at });

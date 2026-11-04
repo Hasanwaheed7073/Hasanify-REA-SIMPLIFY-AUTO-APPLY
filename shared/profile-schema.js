@@ -171,7 +171,15 @@
         items: {
           type: 'object',
           required: ['question', 'answer'],
-          properties: { question: str, answer: str, isRegex: { type: 'boolean' } },
+          properties: {
+            question: str, answer: str, isRegex: { type: 'boolean' },
+            // Learned answers (captured from the user's own edits on applications)
+            source: { type: 'string', enum: ['', 'manual', 'ai', 'learned'] },
+            key: str,          // normalized question with the employer replaced by {company}
+            kind: str,         // 'text' | 'choice'
+            learnedFrom: str,  // hostname it was learned on
+            updatedAt: { type: 'number' },
+          },
         },
       },
     },
@@ -214,6 +222,7 @@
     resumeMode: 'auto',        // 'auto' attach saved | 'ask' choose per application | 'manual' never touch
     coverLetterMode: 'auto',   // 'auto' fill text boxes with saved letter | 'manual' leave to the user
     dailyGoal: 10,             // applications/day target shown in the side panel
+    learningMode: 'ask',       // 'ask' offer to save answers you type | 'auto' save silently | 'off'
     knownAtsHosts: [
       'greenhouse.io', 'lever.co', 'myworkdayjobs.com', 'myworkdaysite.com', 'workday.com',
       'ashbyhq.com', 'smartrecruiters.com', 'icims.com', 'jobvite.com', 'bamboohr.com',

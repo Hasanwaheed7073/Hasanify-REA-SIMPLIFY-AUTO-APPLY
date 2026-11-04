@@ -36,6 +36,7 @@
         <a href="#eeo" data-icon="heart">Voluntary identification</a>
         <a href="#documents" data-icon="file">Resume &amp; documents</a>
         <a href="#answers" data-icon="chat">Custom answers</a>
+        <a href="#learning" data-icon="spark">Learning &amp; missed</a>
         <a href="#settings" data-icon="gear">Settings</a>
       </nav>
 
@@ -309,6 +310,45 @@
         <div class="repeat" data-list="customAnswers"></div>
       </section>
 
+      <!-- Learning & missed questions -->
+      <section class="card" id="learning">
+        <div class="card-head">
+          <h2>Learning &amp; missed questions</h2>
+          <p>Every question Hasanify couldn't fill is recorded here. Answer it once — on the application or below — and it's filled automatically from then on.</p>
+        </div>
+
+        <div class="subhead first">When you answer a question Hasanify missed</div>
+        <div class="choice-grid" data-choice="learningMode">
+          <label class="choice">
+            <input type="radio" name="learningMode" value="ask" />
+            <span class="choice-ico" data-icon="chat"></span>
+            <b>Ask me first <em>Recommended</em></b>
+            <span>The on-page panel offers “Save answer” — nothing is kept until you say so.</span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="learningMode" value="auto" />
+            <span class="choice-ico" data-icon="spark"></span>
+            <b>Learn automatically</b>
+            <span>Answers you type and corrections you make are saved as you go.</span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="learningMode" value="off" />
+            <span class="choice-ico" data-icon="shield"></span>
+            <b>Don't learn</b>
+            <span>Missed questions are still reported, but nothing is saved.</span>
+          </label>
+        </div>
+        <p class="fineprint">Never learned: passwords, ID/SSN numbers, payment details, signatures, captchas and consent checkboxes. Company names are replaced with <code>{company}</code> so one answer works for every employer.</p>
+
+        <div class="subhead row">Missed questions <span class="learn-stats" id="learnStats"></span></div>
+        <div class="missed-filter" id="missedFilter">
+          <button data-filter="open" aria-pressed="true">Not answered</button>
+          <button data-filter="learned" aria-pressed="false">Learned</button>
+          <button data-filter="all" aria-pressed="false">All</button>
+        </div>
+        <div class="missed-list" id="missedList"></div>
+      </section>
+
       <!-- Settings -->
       <section class="card" id="settings">
         <div class="card-head"><h2>Settings</h2></div>
@@ -389,6 +429,7 @@
         <label class="field span-2"><span>Answer with</span><textarea data-field="answer" rows="3"></textarea></label>
       </div>
       <div class="qa-foot">
+        <span class="ca-badge" data-badge hidden></span>
         <label class="check"><input type="checkbox" data-field="isRegex" /> Treat as regular expression</label>
         <button class="btn btn-sm btn-danger-ghost" data-remove>Remove</button>
       </div>
@@ -401,5 +442,6 @@
   <script src="../ui/icons.js"></script>
   <script src="options.js"></script>
   <script src="ai-builder.js"></script>
+  <script src="learning.js"></script>
 </body>
 </html>

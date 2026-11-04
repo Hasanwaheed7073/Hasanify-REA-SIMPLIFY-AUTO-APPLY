@@ -41,6 +41,7 @@ function scheduleSave() {
 }
 
 async function saveNow() {
+  saveTimer = 0; // no save pending (lets external-change sync proceed)
   const res = await send('hasanify:saveProfile', { profile });
   if (res?.ok) {
     setSaveState('', 'All changes saved');
@@ -226,6 +227,12 @@ function renderList(name) {
       });
     }
 
+    const badge = $('[data-badge]', node);
+    if (badge && item.source === 'learned') {
+      badge.hidden = false;
+      badge.textContent = `Learned${item.learnedFrom && item.learnedFrom !== 'dashboard' ? ` · ${item.learnedFrom.replace(/^www\./, '')}` : ''}`;
+    }
+
     $('[data-remove]', node)?.addEventListener('click', () => {
       items.splice(i, 1);
       renderList(name);
@@ -329,7 +336,7 @@ function bindSettings() {
         settings[key] = radio.value;
         await send('hasanify:saveSettings', { settings });
         paintResume();
-        toast('Upload preference saved');
+        toast('Preference saved');
       });
     }
   }
@@ -395,4 +402,16 @@ function bindNav() {
   globalThis.HasanifyHydrateIcons();
   updateCompleteness();
   if (location.hash) document.querySelector(location.hash)?.scrollIntoView();
+
+  // Answers learned on application tabs while this page is open: adopt them so
+  // the next autosave here doesn't overwrite them with a stale copy.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    const next = changes['hasanify.profile']?.newValue;
+    if (area !== 'local' || !next || saveTimer) return;
+    if (JSON.stringify(next.customAnswers ?? []) !== JSON.stringify(profile.customAnswers ?? [])) {
+      profile.customAnswers = next.customAnswers ?? [];
+      renderList('customAnswers');
+      globalThis.HasanifyLearning?.refresh();
+    }
+  });
 })();
