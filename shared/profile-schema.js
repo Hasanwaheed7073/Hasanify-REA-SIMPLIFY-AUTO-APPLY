@@ -179,6 +179,8 @@
             kind: str,         // 'text' | 'choice'
             learnedFrom: str,  // hostname it was learned on
             updatedAt: { type: 'number' },
+            // Job context the answer was given in (variants per context are kept):
+            ctx: { type: 'object', properties: { site: str, seniority: str, remote: str, country: str } },
           },
         },
       },
@@ -223,6 +225,8 @@
     coverLetterMode: 'auto',   // 'auto' fill text boxes with saved letter | 'manual' leave to the user
     dailyGoal: 10,             // applications/day target shown in the side panel
     learningMode: 'ask',       // 'ask' offer to save answers you type | 'auto' save silently | 'off'
+    aiAssist: false,           // AI fallback for questions/options the rules can't resolve (needs an API key)
+    preSubmitCheck: true,      // check required/uncertain fields and wrong company names before you submit
     knownAtsHosts: [
       'greenhouse.io', 'lever.co', 'myworkdayjobs.com', 'myworkdaysite.com', 'workday.com',
       'ashbyhq.com', 'smartrecruiters.com', 'icims.com', 'jobvite.com', 'bamboohr.com',

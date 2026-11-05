@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Hasanify",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Autofill job applications (Workday, Greenhouse, Lever, Ashby, …) from your saved profile.",
   "minimum_chrome_version": "116",
   "icons": {

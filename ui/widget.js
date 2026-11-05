@@ -233,6 +233,30 @@
     .up-btn:hover { background: var(--soft); }
     .up-btn.primary { border: 0; color: #fff; background: linear-gradient(135deg, var(--brand), var(--brand-2)); }
     .up-btn.primary:hover { filter: brightness(1.06); }
+    /* "Check this": filled but uncertain */
+    .item.review { border-color: #FCD34D; background: #FFFBEB; }
+    .item.review .meta { color: #92400E; }
+    .looks-right { margin: 4px 0 2px auto; display: block; height: 26px; padding: 0 10px; border-radius: 7px; font-size: 11.5px; font-weight: 600;
+      color: #92400E; background: #FEF3C7; border: 1px solid #FCD34D; }
+    .looks-right:hover { background: #FDE68A; }
+    .ai-note { font-size: 11.5px; color: #92400E; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 9px; padding: 7px 10px; }
+
+    /* Check before submit */
+    .presubmit { border: 1px solid #FCA5A5; background: #FEF2F2; border-radius: 12px; padding: 12px; }
+    .ps-head { display: flex; align-items: center; gap: 8px; color: #991B1B; font-size: 13.5px; }
+    .ps-ico { width: 18px; height: 18px; display: grid; }
+    .ps-list { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; max-height: 240px; overflow: auto; }
+    .ps-item { text-align: left; padding: 7px 9px; border-radius: 8px; background: #fff; border: 1px solid #FECACA; font-size: 12.5px; }
+    .ps-item:hover { border-color: #F87171; }
+    .ps-item b { display: block; font-weight: 600; color: var(--ink); }
+    .ps-item span { display: block; color: #B42318; font-size: 11.5px; margin-top: 1px; }
+    .ps-item.review span { color: #92400E; }
+    .ps-acts { display: flex; gap: 8px; }
+    .ps-acts button { flex: 1; height: 34px; border-radius: 9px; font-size: 13px; font-weight: 600; }
+    .ps-fix { color: #fff; background: #DC2626; }
+    .ps-fix:hover { filter: brightness(1.06); }
+    .ps-go { color: #991B1B; background: #fff; border: 1px solid #FCA5A5; }
+    .ps-go:hover { background: #FFF5F5; }
     .mode-note { margin-top: 6px; font-size: 11.5px; color: var(--muted); }
     .mode-note button { color: var(--brand); font-weight: 600; font-size: 11.5px; }
   `;
@@ -260,6 +284,15 @@
         </header>
 
         <div class="body" data-view="autofill">
+          <div class="presubmit hidden" data-ref="presubmit" role="alertdialog" aria-label="Before you submit">
+            <div class="ps-head"><span class="ps-ico">${I.alert}</span><b data-ref="psTitle">Before you submit</b></div>
+            <div class="ps-list" data-ref="psList"></div>
+            <div class="ps-acts">
+              <button class="ps-fix" data-act="ps-fix">Let me fix</button>
+              <button class="ps-go" data-act="ps-go">Submit anyway</button>
+            </div>
+          </div>
+
           <div class="job">
             <span class="chip" data-ref="ats"></span>
             <div class="title" data-ref="title"></div>
@@ -287,8 +320,10 @@
 
           <div class="all-done hidden" data-ref="allDone"><span class="ico">${I.check}</span>Everything we know is filled. Review &amp; submit!</div>
 
+          <div class="ai-note hidden" data-ref="aiNote"></div>
+
           <div class="hidden" data-ref="attentionWrap">
-            <div class="section-title">Unfilled fields <span class="st-count" data-ref="reportCount"></span></div>
+            <div class="section-title"><span data-ref="reportTitle">Unfilled fields</span> <span class="st-count" data-ref="reportCount"></span></div>
             <div class="report-tip" data-ref="reportTip"></div>
             <div class="list" data-ref="attention"></div>
             <button class="more hidden" data-ref="reportMore"></button>
@@ -362,7 +397,7 @@
     const showResults = ui.hasRun && !ui.running;
     const pendingUploads = renderUploads(summary.uploads ?? [], showResults);
     const pendingLearn = (summary.report ?? []).filter((r) => r.learn?.status === 'pending').length;
-    const todo = summary.attention.length + pendingUploads + pendingLearn;
+    const todo = summary.attention.length + pendingUploads + pendingLearn + (summary.review ?? 0);
     ref('stats').classList.toggle('hidden', !showResults);
     ref('filled').textContent = summary.filled;
     ref('todo').textContent = todo;
@@ -396,7 +431,7 @@
     list.replaceChildren();
 
     // Always show what needs action; collapse optional, untouched rows.
-    const important = rows.filter((r) => (r.required && !r.answered) || r.learn || r.answered);
+    const important = rows.filter((r) => (r.required && !r.answered) || r.review || r.learn || r.answered);
     const optional = rows.filter((r) => !important.includes(r));
     const visible = ui.showAllMissed ? rows : [...important, ...optional.slice(0, Math.max(0, 6 - important.length))];
 
@@ -412,6 +447,18 @@
       b.title = 'Show this field on the page';
       b.addEventListener('click', () => jumpTo(r.el));
       wrap.append(b);
+
+      if (r.review) {
+        // Filled, but Hasanify isn't sure: show what it put in + a one-click confirm.
+        b.className = 'item review';
+        b.querySelector('.meta').textContent = `Check this · ${r.reason}${r.value ? ` · “${r.value}”` : ''}`;
+        const ok = document.createElement('button');
+        ok.className = 'looks-right';
+        ok.textContent = 'Looks right';
+        ok.title = 'Confirm this answer';
+        ok.addEventListener('click', () => engine.confirmReview(r.rid));
+        wrap.append(ok);
+      }
 
       if (r.learn?.status === 'pending') {
         const learn = document.createElement('div');
@@ -437,7 +484,13 @@
     more.onclick = () => { ui.showAllMissed = !ui.showAllMissed; render(); };
 
     ref('reportCount').textContent = rows.length;
-    ref('reportTip').textContent = mode === 'off' ? ''
+    ref('reportTitle').textContent = rows.every((r) => r.review) ? 'Please check' : rows.some((r) => r.review) ? 'Check & finish' : 'Unfilled fields';
+    const aiNote = ref('aiNote');
+    aiNote.textContent = summary.aiNotice ? `AI assist: ${summary.aiNotice}` : '';
+    aiNote.classList.toggle('hidden', !summary.aiNotice || !show);
+    ref('reportTip').textContent = rows.some((r) => r.review) && !rows.some((r) => !r.review && !r.answered)
+      ? 'Hasanify filled these but wasn’t sure — the amber fields on the page. Click one to check it.'
+      : mode === 'off' ? ''
       : rows.some((r) => !r.answered && r.learnable)
         ? (mode === 'auto' ? 'Answer these on the page — Hasanify learns your answers automatically.' : 'Answer these on the page — Hasanify will offer to remember them.')
         : '';
@@ -573,6 +626,42 @@
     render();
   });
 
+  // Check before submit: the engine held the submit and lists what looks wrong.
+  engine.setPresubmitUI?.(true);
+  engine.events.addEventListener('presubmit', (e) => {
+    const { issues, proceed } = e.detail;
+    ui.presubmit = { proceed };
+    mount();
+    if (!ui.open) setOpen(true);
+    const n = (k) => issues.filter((i) => i.kind === k).length;
+    ref('psTitle').textContent = n('required') ? `Before you submit — ${n('required')} required field${n('required') === 1 ? ' is' : 's are'} empty`
+      : n('company') ? 'Before you submit — wrong company?' : `Before you submit — ${issues.length} answer${issues.length === 1 ? '' : 's'} to check`;
+    const list = ref('psList');
+    list.replaceChildren();
+    for (const issue of issues.slice(0, 12)) {
+      const b = document.createElement('button');
+      b.className = `ps-item ${issue.kind}`;
+      b.innerHTML = '<b></b><span></span>';
+      b.querySelector('b').textContent = issue.label;
+      b.querySelector('span').textContent = issue.detail ?? (issue.kind === 'required' ? 'Required — still empty' : '');
+      b.addEventListener('click', () => {
+        if (issue.kind === 'review' && issue.id != null) engine.confirmReview(issue.id);
+        jumpTo(issue.el);
+      });
+      list.append(b);
+    }
+    ref('presubmit').classList.remove('hidden');
+    panel.querySelector('.body').scrollTop = 0;
+    ref('presubmit').querySelector('.ps-fix').focus();
+  });
+
+  function closePresubmit(jumpToFirst) {
+    ref('presubmit').classList.add('hidden');
+    const first = ref('psList').querySelector('.ps-item');
+    if (jumpToFirst && first) first.click();
+    ui.presubmit = null;
+  }
+
   engine.events.addEventListener('uploads-changed', () => host.isConnected && render());
   engine.events.addEventListener('learning-changed', () => host.isConnected && render());
 
@@ -611,7 +700,9 @@
     if (act === 'quick-access') chrome.runtime.sendMessage({ type: 'hasanify:openSidePanel' }).catch(() => {});
     if (act === 'fill') engine.fill();
     if (act === 'minimize') setOpen(false);
-    if (act === 'close') { ui.dismissed = true; host.remove(); }
+    if (act === 'close') { ui.dismissed = true; host.remove(); engine.setPresubmitUI?.(false); }
+    if (act === 'ps-fix') closePresubmit(true);
+    if (act === 'ps-go') { const go = ui.presubmit?.proceed; closePresubmit(false); go?.(); }
     if (act === 'armed') engine.setArmed(!engine.getSummary().armed);
     if (act === 'profile') chrome.runtime.sendMessage({ type: 'hasanify:openOptions' }).catch(() => {});
     if (act === 'upload-settings') chrome.runtime.sendMessage({ type: 'hasanify:openOptions', hash: 'documents' }).catch(() => {});

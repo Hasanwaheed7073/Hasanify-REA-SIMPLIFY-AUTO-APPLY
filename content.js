@@ -58,6 +58,9 @@
     MUTATION_DEBOUNCE_MS: 450,
     MAX_DEBOUNCE_MS: 1500,     // never postpone a run longer than this, however busy the page is
     ARMED_POLL_MS: 2500,       // while following an application, look for new fields this often
+    LEARNED_MIN_SIMILARITY: 0.72, // learned answer ↔ question (concept-level similarity)
+    REVIEW_OPTION_SCORE: 72,   // option matches below this are filled but flagged "check this"
+    AI_MAX_BATCH: 20,          // questions per AI request
     OPTION_WAIT_MS: 2000,      // how long to wait for an async dropdown to render options
     BETWEEN_FIELDS_MS: 25,     // breathing room for frameworks that batch state updates
     MAX_TEXT_LEN: 300,         // longer "labels" are probably paragraphs, not labels
@@ -118,7 +121,13 @@
     reportedMissed: new Set(), // question keys already sent to the missed-questions history
     verifyTimers: [],
     lastStats: null,
+    pickScores: [],        // option-match scores of the field being filled (→ confidence)
+    companies: [],         // employers of other applications (wrong-company check)
+    siteNote: null,        // what Hasanify learned about this site's form last time
+    submitBypassUntil: 0,  // "Submit anyway" lets the next submit through
+    aiNotice: '',          // why AI help was skipped (not configured, error…)
   };
+  let regSeq = 0;          // ids for registry entries (widget "Looks right" buttons)
 
   // ═════════════════════════════════════════════════════════════════════════
   // 2. Generic helpers
@@ -446,6 +455,22 @@
   const TEXTISH = ['text', 'textarea', 'combobox', 'select', 'listbox'];
   const CHOICE = ['select', 'radio', 'combobox', 'listbox', 'checkbox', 'checkbox-group', 'text', 'textarea'];
 
+  /** Whole years of work experience, overlapping jobs counted once. */
+  function totalYears(experience) {
+    const toMonth = (d) => { const m = /^(\d{4})-(\d{2})/.exec(d ?? ''); return m ? +m[1] * 12 + (+m[2] - 1) : null; };
+    const now = new Date();
+    const spans = (experience ?? []).map((e) => [toMonth(e.startDate), e.current || !e.endDate ? now.getFullYear() * 12 + now.getMonth() : toMonth(e.endDate)])
+      .filter(([a, b]) => a != null && b != null && b >= a).sort((x, y) => x[0] - y[0]);
+    if (!spans.length) return null;
+    let months = 0, [cs, ce] = spans[0];
+    for (const [a, b] of spans.slice(1)) {
+      if (a <= ce) ce = Math.max(ce, b);
+      else { months += ce - cs; [cs, ce] = [a, b]; }
+    }
+    months += ce - cs;
+    return String(Math.floor(months / 12));
+  }
+
   const FIELD_DEFS = [
     // ---- Documents ---------------------------------------------------------
     { key: 'documents.coverLetterFile', kinds: ['file'], match: [/cover ?letter/], value: () => null },
@@ -574,6 +599,14 @@
     { key: 'skills.certifications', kinds: ['text', 'textarea'], match: [/certific|licen[cs]e/],
       exclude: [/driver/], value: (p) => p.skills.certifications.join(', ') },
 
+    // Total professional experience, computed from the work history (overlaps
+    // merged). Skill-specific questions ("years with Python") are excluded:
+    // a total would be the wrong answer there.
+    { key: 'experience.totalYears', kinds: CHOICE, review: true,
+      match: [/(how many|number of|total) years|years of (professional |relevant |industry |work |full.?time )?(work )?experience|total (work )?experience|experience level/],
+      exclude: [/\b(with|using)\b|\b18\b|eighteen|\bage\b|old are you|years (at|in) (this|your current)/],
+      value: (p) => totalYears(p.experience) },
+
     // ---- Work authorization (sponsorship first; it's the more specific question) --
     { key: 'workAuth.sponsorship', kinds: CHOICE, bool: true,
       match: [/sponsor|visa (support|transfer)|\bh ?1 ?b\b|immigration support/],
@@ -650,15 +683,114 @@
   // "{company}" ("why do you want to work at {company}"), so one answer serves
   // every employer. They match by word overlap, not substring.
 
-  const STOP = new Set('a an the to of in on at for and or you your do does did are is be been have has had please if any this that with we us our i my me will would can could should from by as it its about'.split(' '));
-  const contentTokens = (s) => new Set(norm(s).split(' ').filter((w) => w.length > 1 && !STOP.has(w)));
+  const STOP = new Set('a an the to of in on at for and or you your do does did are is be been have has had please if any this that with we us our i my me will would can could should from by as it its about currently presently now ever yet also any were was am'.split(' '));
 
+  /**
+   * Meaning, not spelling: words that ask the same thing collapse onto one
+   * concept, so "Are you legally permitted to work in the US?" and "Do you
+   * have US work authorization?" compare as the same question. Each group's
+   * first word is the concept name.
+   */
+  const CONCEPTS = [
+    ['authorize', 'authorized', 'authorised', 'authorization', 'authorisation', 'permitted', 'permit', 'eligible', 'eligibility', 'legally', 'lawfully', 'entitled', 'allowed'],
+    ['sponsor', 'sponsorship', 'sponsored', 'visa', 'h1b', 'immigration'],
+    ['require', 'requires', 'required', 'need', 'needs', 'necessitate'],
+    ['work', 'worked', 'working', 'employment', 'employed', 'employ', 'employee', 'job'],
+    ['us', 'usa', 'america', 'american', 'united', 'states'],
+    ['relocate', 'relocation', 'relocating', 'move', 'moving'],
+    ['start', 'join', 'begin', 'available', 'availability', 'commence'],
+    ['salary', 'compensation', 'pay', 'remuneration', 'ctc', 'wage', 'rate'],
+    ['expect', 'expected', 'expectation', 'expectations', 'desired', 'target', 'requirement', 'requirements'],
+    ['year', 'years', 'yrs', 'yr'],
+    ['experience', 'experienced', 'background', 'expertise'],
+    ['onsite', 'office', 'in-office', 'in person', 'hybrid', 'commute', 'commuting'],
+    ['remote', 'remotely', 'wfh', 'distributed'],
+    ['refer', 'referred', 'referral', 'referrer'],
+    ['hear', 'heard', 'learn', 'find', 'found', 'discover', 'source'],
+    ['previously', 'before', 'formerly', 'past', 'prior'],
+    ['contractor', 'contract', 'freelance', 'freelancer'],
+    ['notice', 'resign', 'resignation'],
+    ['clearance', 'cleared'],
+    ['convict', 'conviction', 'convicted', 'felony', 'criminal', 'offense', 'offence'],
+    ['travel', 'travelling', 'traveling'],
+    ['shift', 'shifts', 'weekend', 'weekends', 'overtime', 'night', 'nights'],
+    ['degree', 'diploma', 'qualification'],
+    ['company', 'organization', 'organisation', 'firm', 'team'],
+    ['why', 'motivation', 'motivates', 'interest', 'interested', 'excites', 'attracted'],
+    ['age', '18', 'eighteen', 'older', 'adult'],
+  ];
+  const CONCEPT_OF = new Map();
+  for (const group of CONCEPTS) for (const w of group) CONCEPT_OF.set(w, `~${group[0]}`);
+
+  /** Light stemmer: enough to make "relocating"/"relocate", "sponsors"/"sponsor" meet. */
+  const stem = (w) => (w.length > 5 ? w.replace(/(ations?|ings?|ed|es|s)$/, '') : w.length > 3 ? w.replace(/s$/, '') : w);
+  const conceptOf = (w) => CONCEPT_OF.get(w) ?? CONCEPT_OF.get(stem(w)) ?? stem(w);
+
+  const contentTokens = (s) => new Set(norm(s).split(' ').filter((w) => w.length > 1 && !STOP.has(w)).map(conceptOf));
+
+  /** 0..1 — Jaccard over concepts, with partial credit when one question contains the other. */
   function similarity(a, b) {
     const A = contentTokens(a), B = contentTokens(b);
     if (!A.size || !B.size) return 0;
     let inter = 0;
     for (const w of A) if (B.has(w)) inter++;
-    return inter / (A.size + B.size - inter);
+    const jaccard = inter / (A.size + B.size - inter);
+    // "Will you require sponsorship?" ⊂ "Will you now or in the future require visa sponsorship?"
+    const containment = Math.min(A.size, B.size) >= 3 ? inter / Math.min(A.size, B.size) : 0;
+    return Math.max(jaccard, containment * 0.85);
+  }
+
+  // ---- Job context: which answer fits THIS application? ---------------------
+  // Answers like salary, notice period or relocation differ between a senior
+  // and a junior role, a remote and an on-site job, or another country. Each
+  // learned answer remembers the context it was given in; matching prefers the
+  // variant whose context fits the current job.
+
+  let cachedJobCtx = null;
+  function jobContext() {
+    if (cachedJobCtx) return cachedJobCtx;
+    const info = (() => { try { return getPageInfo(); } catch { return {}; } })();
+    const title = String(info.title ?? '').toLowerCase();
+    const ld = jobPostingLd();
+    const head = `${title} ${(document.body?.innerText ?? '').slice(0, 4000)}`.toLowerCase();
+    const seniority =
+      /\b(intern|internship|co-?op|apprentice)\b/.test(title) ? 'intern' :
+      /\b(junior|jr\.?|entry[- ]level|graduate|associate)\b/.test(title) ? 'junior' :
+      /\b(principal|staff|distinguished|architect)\b/.test(title) ? 'staff' :
+      /\b(head of|director|vp|vice president|chief|manager|lead)\b/.test(title) ? 'lead' :
+      /\b(senior|sr\.?|iii|iv)\b/.test(title) ? 'senior' : 'mid';
+    const remote = ld?.jobLocationType === 'TELECOMMUTE' || /\b(fully remote|remote[- ]first|100% remote|remote \(|\(remote|remote - |- remote|remote,|work from home)\b/.test(head)
+      ? 'remote' : /\bhybrid\b/.test(head) ? 'hybrid' : 'onsite';
+    const country = String(
+      [ld?.jobLocation].flat().find((l) => l?.address?.addressCountry)?.address?.addressCountry?.name ??
+      [ld?.jobLocation].flat().find((l) => l?.address?.addressCountry)?.address?.addressCountry ?? '',
+    ).toLowerCase();
+    cachedJobCtx = { site: siteOf(location.hostname), seniority, remote, country };
+    return cachedJobCtx;
+  }
+
+  /** schema.org JobPosting JSON-LD (Greenhouse, Lever, Workday, Ashby… publish it). */
+  function jobPostingLd() {
+    for (const s of document.querySelectorAll('script[type="application/ld+json"]')) {
+      try {
+        const items = [JSON.parse(s.textContent)].flat().flatMap((x) => x?.['@graph'] ?? [x]);
+        const jp = items.find((x) => /JobPosting/i.test(String(x?.['@type'])));
+        if (jp) return jp;
+      } catch { /* malformed JSON-LD */ }
+    }
+    return null;
+  }
+
+  /** How well a learned answer's context fits this job (0 = unknown/neutral). */
+  function contextFit(ctx) {
+    if (!ctx) return 0;
+    const now = jobContext();
+    let fit = 0;
+    if (ctx.site && ctx.site === now.site) fit += 0.12;          // same employer/ATS: what you used here last time
+    if (ctx.seniority) fit += ctx.seniority === now.seniority ? 0.06 : -0.03;
+    if (ctx.remote) fit += ctx.remote === now.remote ? 0.04 : -0.02;
+    if (ctx.country && now.country) fit += ctx.country === now.country ? 0.06 : -0.04;
+    return fit;
   }
 
   let cachedCompany = null;
@@ -684,20 +816,24 @@
     if (!question) return null;
     const nq = norm(question);
     const key = questionKey(question);
-    let best = null, bestScore = 0;
+    let best = null, bestScore = 0, bestSim = 0;
     for (const ca of state.profile.customAnswers ?? []) {
       if (!ca?.question || ca.answer == null || ca.answer === '') continue;
       try {
         if (ca.source === 'learned') {
           const caKey = ca.key || norm(ca.question);
-          const score = caKey === key ? 1 : similarity(caKey, key);
-          if (score >= 0.75 && score > bestScore) { best = ca; bestScore = score; }
+          const sim = caKey === key ? 1 : similarity(caKey, key);
+          if (sim < CONFIG.LEARNED_MIN_SIMILARITY) continue;
+          // Among variants of the same question, the one given in the most
+          // similar context wins (same site > same seniority/remote/country).
+          const score = sim + contextFit(ca.ctx);
+          if (score > bestScore) { best = ca; bestScore = score; bestSim = sim; }
         } else if (ca.isRegex ? new RegExp(ca.question, 'i').test(question) : nq.includes(norm(ca.question))) {
-          return { ...ca, answer: fillTemplate(ca.answer) }; // explicit phrases win immediately
+          return { ...ca, answer: fillTemplate(ca.answer), sim: 1 }; // explicit phrases win immediately
         }
       } catch { /* invalid user regex: ignore */ }
     }
-    return best ? { ...best, answer: fillTemplate(best.answer) } : null;
+    return best ? { ...best, answer: fillTemplate(best.answer), sim: bestSim } : null;
   }
 
   /** Returns { def, score } | { custom } | null */
@@ -840,7 +976,55 @@
     const n = norm(s);
     const candidates = [...list];
     for (const [rx, syns] of VALUE_SYNONYMS) if (rx.test(n)) candidates.push(...syns);
-    return { type: 'text', candidates: [...new Set(candidates)] };
+    if (/degree|education/.test(def?.key ?? '')) {
+      for (const [rx, syns] of DEGREE_SYNONYMS) if (rx.test(n)) candidates.push(...syns);
+    }
+    const desired = { type: 'text', candidates: [...new Set(candidates)] };
+    // Numbers ("4" years) can be matched against ranges: "3-5 years", "5+", "Less than 2".
+    if (/^\d+(\.\d+)?$/.test(s.trim())) desired.number = parseFloat(s);
+    return desired;
+  }
+
+  /** Degree equivalents: profile says "B.S. Computer Science", the dropdown says "Bachelor's Degree". */
+  const DEGREE_SYNONYMS = [
+    [/\b(bachelor|bachelors|b s|bs|bsc|b sc|ba|b a|be|b e|btech|b tech|beng|undergraduate)\b/,
+      ["bachelor's degree", 'bachelors degree', 'bachelor', "bachelor's", 'bachelor of science', 'bachelor of arts', 'undergraduate degree', '4 year degree', 'four year degree']],
+    [/\b(master|masters|m s|ms|msc|m sc|ma|m a|mba|mtech|m tech|meng|m eng)\b/,
+      ["master's degree", 'masters degree', 'master', "master's", 'graduate degree', 'mba']],
+    [/\b(phd|ph d|doctor|doctorate|doctoral|dphil)\b/, ['phd', 'ph d', 'doctorate', 'doctoral degree', 'doctor of philosophy']],
+    [/\bassociate/, ["associate's degree", 'associate degree', 'associates', '2 year degree', 'two year degree']],
+    [/high school|\bged\b|secondary|a levels?|matric|intermediate|hssc/, ['high school diploma', 'high school', 'ged', 'secondary school']],
+  ];
+
+  /**
+   * How well an option like "3-5 years" / "5+" / "Less than 2 years" / "None"
+   * fits a number. 0 = doesn't fit.
+   */
+  function rangeOptionScore(optText, n) {
+    // Own normalization: norm() would strip the "+", "-" and "<" that carry the meaning.
+    const t = String(optText ?? '').toLowerCase().replace(/[–—]/g, '-').replace(/\byrs?\b/g, 'years')
+      .replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[.!]$/, '');
+    if (!/\d|none|no experience/.test(t)) return 0;
+    if (/^(none|no experience|no)$/.test(t) || /\bno (prior |professional )?experience\b/.test(t)) return n === 0 ? 92 : 0;
+    let m;
+    if ((m = /(\d+(?:\.\d+)?) ?(?:-|to|and) ?(\d+(?:\.\d+)?)/.exec(t))) {
+      const a = +m[1], b = +m[2];
+      if (n >= a && n <= b) return n === b ? 86 : 92; // "3-5" vs 5 also fits "5+" — prefer the other
+      if (n > b && n < b + 1) return 80;              // 5.5 → "3-5"
+      return 0;
+    }
+    if ((m = /(\d+(?:\.\d+)?) ?(?:\+|or more|plus|and (?:above|over|more|up))|(?:more than|over|at least|minimum|min|above|greater than) (\d+(?:\.\d+)?)/.exec(t))) {
+      const a = +(m[1] ?? m[2]);
+      const strict = /more than|over|above|greater than/.test(t);
+      return (strict ? n > a : n >= a) ? 90 : 0;
+    }
+    if ((m = /(?:less than|under|fewer than|below|up to|max(?:imum)?|<) ?(\d+(?:\.\d+)?)/.exec(t))) {
+      const a = +m[1];
+      const inclusive = /up to|max/.test(t);
+      return (inclusive ? n <= a : n < a) ? 90 : 0;
+    }
+    if ((m = /^(\d+(?:\.\d+)?)(?: years?)?$/.exec(t))) return +m[1] === n ? 96 : 0;
+    return 0;
   }
 
   const pad2 = (n) => String(n).padStart(2, '0');
@@ -933,13 +1117,19 @@
       if (desired.type === 'bool') {
         score = Math.max(boolOptionScore(opt.text, desired.value), boolOptionScore(opt.value, desired.value));
       } else {
-        desired.candidates.forEach((c, i) => {
-          const penalty = i === 0 ? 0 : 3; // prefer the literal profile value over synonyms
-          score = Math.max(score, textOptionScore(opt.text, c) - penalty, textOptionScore(opt.value, c) - penalty - 5);
-        });
+        if (desired.number != null && /\d|none|no experience/i.test(opt.text ?? '')) {
+          // Numeric options are judged as ranges only ("Less than 5" must not match 5 by text).
+          score = rangeOptionScore(opt.text, desired.number);
+        } else {
+          desired.candidates.forEach((c, i) => {
+            const penalty = i === 0 ? 0 : 3; // prefer the literal profile value over synonyms
+            score = Math.max(score, textOptionScore(opt.text, c) - penalty, textOptionScore(opt.value, c) - penalty - 5);
+          });
+        }
       }
       if (score >= CONFIG.MIN_OPTION_SCORE && (!best || score > best.score)) best = { ...opt, score };
     }
+    if (best) state.pickScores.push(best.score); // → confidence of this fill (see processField)
     return best;
   }
 
@@ -1344,6 +1534,7 @@
     style.textContent = `
       [data-hasanify="filled"] { box-shadow: 0 0 0 2px rgba(22,163,74,.55) !important; transition: box-shadow .2s; }
       [data-hasanify="no-option"], [data-hasanify="failed"] { box-shadow: 0 0 0 2px rgba(234,179,8,.6) !important; }
+      [data-hasanify="review"] { box-shadow: 0 0 0 2px rgba(245,158,11,.9), 0 0 0 5px rgba(245,158,11,.18) !important; background-color: rgba(254,243,199,.35) !important; }
       @keyframes hasanify-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(91,91,247,0) } 40% { box-shadow: 0 0 0 6px rgba(91,91,247,.35) } }
       .hasanify-pulse { animation: hasanify-pulse .9s ease-in-out 2 !important; border-radius: 6px; }
     `;
@@ -1361,10 +1552,12 @@
   // ═════════════════════════════════════════════════════════════════════════
 
   async function loadContext() {
-    const res = await chrome.runtime.sendMessage({ type: 'hasanify:getContext' });
+    const res = await chrome.runtime.sendMessage({ type: 'hasanify:getContext', site: siteOf(location.hostname) });
     if (!res?.ok) throw new Error(res?.error ?? 'Failed to load profile');
     state.profile = mergeWithDefaults(DEFAULT_PROFILE, res.profile);
     state.settings = mergeWithDefaults(DEFAULT_SETTINGS, res.settings);
+    state.companies = res.companies ?? [];
+    state.siteNote = res.siteNote ?? null;
   }
 
   /** Classify + fill one logical field. Returns its final status. */
@@ -1403,6 +1596,7 @@
 
     const filler = match.def?.suggest && field.kind === 'text' ? fillSuggestText : FILLERS[field.kind];
     let status;
+    state.pickScores = [];
     try {
       status = await filler(field, desired);
     } catch (err) {
@@ -1410,7 +1604,23 @@
       status = 'failed';
     }
     log(status, key, { index, score: match.score, label: sig.rawLabel, el: field.el });
-    return { status, key, sig };
+    return { status, key, sig, review: status === 'filled' ? reviewReason(match, field) : null };
+  }
+
+  /**
+   * Confidence: null when Hasanify is sure, otherwise a short reason why the
+   * user should glance at the field ("check this" highlight + widget list).
+   */
+  function reviewReason(match, field) {
+    const worstOption = state.pickScores.length ? Math.min(...state.pickScores) : 100;
+    if (match.custom) {
+      if (match.custom.source === 'learned' && match.custom.sim < 0.9) return 'Answer from a similar question';
+    } else {
+      if (match.def.review) return field.kind === 'text' ? 'Calculated from your profile' : 'Picked from your profile — check the range';
+      if (match.score < 3) return 'Guessed from the page layout'; // only nearby text matched, no label
+    }
+    if (worstOption < CONFIG.REVIEW_OPTION_SCORE) return 'Closest matching option';
+    return null;
   }
 
   /**
@@ -1440,17 +1650,39 @@
       emit('run-start', { total: fields.length });
 
       let done = 0;
-      const missedItems = [];
+      const results = [];
       for (const field of fields) {
         if (!field.el.isConnected) continue;
-        const { status, key, sig } = await processField(field);
+        const { status, key, sig, review } = await processField(field);
         const prev = state.registry.get(field.el) ?? { retries: 0 };
         state.registry.set(field.el, {
-          ...prev, key, status, field, label: sig?.rawLabel ?? '', ident: identityOf(field.el),
+          ...prev, id: prev.id ?? ++regSeq, key, status, field, label: sig?.rawLabel ?? '', ident: identityOf(field.el),
           retries: prev.retries + (status === 'failed' ? 1 : 0),
+          review: review ?? null, reviewed: false,
         });
+        results.push({ field, sig, status });
 
-        // Report + learn: watch missed fields for the user's answer, filled ones for corrections.
+        if (status !== 'unmatched') stats.matched++;
+        else if (sig?.rawLabel) stats.unmatched.push(sig.rawLabel.slice(0, 120));
+        if (status === 'filled') {
+          stats.filled++;
+          state.filledEver.add(field.el); // survives step changes, for the toolbar badge
+        }
+        if (status !== 'unmatched' && status !== 'no-value' && status !== 'skipped-user' && status !== 'manual') {
+          mark(field, status === 'filled' && review ? 'review' : status);
+        }
+
+        emit('progress', { done: ++done, total: fields.length, status, label: sig?.rawLabel ?? '' });
+        await sleep(CONFIG.BETWEEN_FIELDS_MS);
+      }
+
+      // Second chance with AI for what the rules couldn't resolve (opt-in).
+      await aiPass(results, stats);
+
+      // Report + learn: watch missed fields for the user's answer, filled ones for corrections.
+      const missedItems = [];
+      for (const { field, sig } of results) {
+        const status = state.registry.get(field.el)?.status;
         if (MISSED.has(status) || status === 'filled') watchForLearning(field, sig, status);
         if (MISSED.has(status) && isLearnable(field, sig?.rawLabel)) {
           missedItems.push({
@@ -1460,21 +1692,11 @@
             required: isRequired(field, sig.rawLabel),
           });
         }
-
-        if (status !== 'unmatched') stats.matched++;
-        else if (sig?.rawLabel) stats.unmatched.push(sig.rawLabel.slice(0, 120));
-        if (status === 'filled') {
-          stats.filled++;
-          state.filledEver.add(field.el); // survives step changes, for the toolbar badge
-        }
-        if (status !== 'unmatched' && status !== 'no-value' && status !== 'skipped-user' && status !== 'manual') mark(field, status);
-
-        emit('progress', { done: ++done, total: fields.length, status, label: sig?.rawLabel ?? '' });
-        await sleep(CONFIG.BETWEEN_FIELDS_MS);
       }
 
       state.lastStats = stats;
       recordMissed(missedItems);
+      if (stats.filled) noteCompany();
       const summary = getSummary();
       emit('run-end', summary);
       if (fields.length) {
@@ -1494,7 +1716,7 @@
       state.filling = false;
       // Re-check at several delays: slow hydration can wipe values seconds later.
       state.verifyTimers.forEach(clearTimeout);
-      state.verifyTimers = [1500, 4000, 9000].map((ms) => setTimeout(verifyFilled, ms));
+      state.verifyTimers = (state.siteNote?.slow ? [1500, 4000, 9000, 15000] : [1500, 4000, 9000]).map((ms) => setTimeout(verifyFilled, ms));
       if (state.pendingRun) {
         state.pendingRun = false;
         scheduleRun();
@@ -1523,6 +1745,12 @@
     }
     if (reverted) {
       log(`${reverted} field(s) were reset by the page; retrying`);
+      // Site memory: next time on this site, wait longer before the first pass
+      // and keep re-checking longer, so it fills fully on the first try.
+      if (!state.siteNote?.slow) {
+        state.siteNote = { ...state.siteNote, slow: true };
+        chrome.runtime.sendMessage({ type: 'hasanify:siteNote', site: siteOf(location.hostname), note: { slow: true } }).catch(() => {});
+      }
       scheduleRun();
     }
   }
@@ -1536,6 +1764,269 @@
       mo.observe(document, { childList: true, subtree: true, attributes: true });
       function done() { mo.disconnect(); clearTimeout(timer); clearTimeout(cap); resolve(); }
     });
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // AI assist (opt-in): questions and options the rules couldn't resolve
+  // ═════════════════════════════════════════════════════════════════════════
+  //
+  // After the rule-based pass, unrecognized questions and dropdowns with no
+  // matching option go to the background in ONE batch. The background asks the
+  // user's own model (their API key never reaches the page) to answer strictly
+  // from the profile; anything it can't ground comes back empty. Every AI fill
+  // is flagged "check this" — it is never treated as certain.
+
+  const AI_KINDS = new Set(['select', 'radio', 'checkbox-group', 'combobox', 'listbox', 'text']);
+
+  async function aiPass(results, stats) {
+    if (!state.settings?.aiAssist) return;
+    const todo = results.filter(({ field, sig, status }) =>
+      (status === 'unmatched' || status === 'no-option' || status === 'no-value') &&
+      AI_KINDS.has(field.kind) && field.el.isConnected && isLearnable(field, sig?.rawLabel) && !hasExistingValue(field));
+    if (!todo.length) return;
+
+    emit('progress', { done: 0, total: todo.length, status: 'ai', label: 'Asking AI about the remaining questions…' });
+    const items = [];
+    for (const [i, r] of todo.slice(0, CONFIG.AI_MAX_BATCH).entries()) {
+      const options = r.field.kind === 'text' ? [] : await readOptions(r.field);
+      if (r.field.kind !== 'text' && !options.length) continue;
+      items.push({ id: i, question: cleanLabel(r.sig.rawLabel), kind: r.field.kind, options: options.slice(0, 80),
+        multi: r.field.kind === 'checkbox-group', required: isRequired(r.field, r.sig.rawLabel), r });
+    }
+    if (!items.length) return;
+
+    const info = (() => { try { return getPageInfo(); } catch { return {}; } })();
+    const res = await chrome.runtime.sendMessage({
+      type: 'hasanify:aiResolve',
+      job: { title: info.title ?? '', company: currentCompany(), ...jobContext() },
+      items: items.map(({ r, ...q }) => q),
+    }).catch((err) => ({ ok: false, error: String(err) }));
+    if (!res?.ok) {
+      state.aiNotice = res?.error ?? 'AI unavailable';
+      log('AI skipped:', state.aiNotice);
+      return;
+    }
+    state.aiNotice = '';
+
+    let done = 0;
+    for (const ans of res.answers ?? []) {
+      const item = items.find((q) => q.id === ans.id);
+      const value = Array.isArray(ans.answer) ? ans.answer.filter(Boolean).join(', ') : String(ans.answer ?? '').trim();
+      if (!item || !value || !item.r.field.el.isConnected) continue;
+      const { field } = item.r;
+      // Choice answers must be one of the real options: never invent one.
+      if (item.options.length) {
+        const picks = value.split(/\s*,\s*/);
+        if (!picks.every((p) => item.options.some((o) => norm(o) === norm(p)))) continue;
+      }
+      state.pickScores = [];
+      let status;
+      try {
+        status = await FILLERS[field.kind](field, { type: 'text', candidates: [value] });
+      } catch { status = 'failed'; }
+      emit('progress', { done: ++done, total: items.length, status, label: item.question });
+      if (status !== 'filled') continue;
+      const info2 = state.registry.get(field.el);
+      Object.assign(info2, { status: 'filled', key: `ai:${questionKey(item.question)}`, review: 'AI suggestion — please check', reviewed: false, ai: true });
+      stats.filled++;
+      stats.matched++;
+      state.filledEver.add(field.el);
+      mark(field, 'review');
+      await sleep(CONFIG.BETWEEN_FIELDS_MS);
+    }
+  }
+
+  /** Option texts of any choice control. Custom dropdowns are opened briefly and closed again. */
+  async function readOptions(field) {
+    const { el, kind } = field;
+    const clean = (list) => [...new Set(list.map((t) => String(t ?? '').replace(/\s+/g, ' ').trim()).filter((t) => t && !PLACEHOLDER_OPTION.test(t)))];
+    if (kind === 'select') return clean([...el.options].filter((o) => !o.disabled).map(textOf));
+    if (kind === 'radio' || kind === 'checkbox-group') return clean(field.members.map(getOptionLabel));
+    if (kind === 'combobox' || kind === 'listbox') {
+      try {
+        focusElement(el);
+        realClick(el);
+        if (kind === 'combobox') pressKey(el, 'ArrowDown');
+        const opts = await waitFor(() => { const o = getVisibleOptions(el); return o.length ? o : null; }, 1500);
+        return clean((opts ?? []).map((o) => o.text));
+      } finally {
+        pressKey(el, 'Escape');
+        if (kind === 'combobox') blurElement(el);
+      }
+    }
+    return [];
+  }
+
+  /** Remember which employer this application is for (wrong-company check on later applications). */
+  let notedCompany = '';
+  function noteCompany() {
+    const c = currentCompany();
+    if (!c || c === notedCompany) return;
+    notedCompany = c;
+    chrome.runtime.sendMessage({ type: 'hasanify:noteCompany', company: c }).catch(() => {});
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // Check before submit
+  // ═════════════════════════════════════════════════════════════════════════
+  //
+  // When the user clicks the FINAL submit button of a form Hasanify worked on,
+  // look for: required fields still empty, fills Hasanify wasn't sure about and
+  // nobody checked, and answers/attachments that name a different employer
+  // (a reused cover letter that still says "Globex"). If anything turns up the
+  // submit is held and the widget asks "Fix" or "Submit anyway".
+
+  const SUBMIT_TEXT = /\b(submit|send)\b|apply now|^apply$|^apply for (this )?(job|position|role)$|complete (my )?application|finish( application)?$|^done$/i;
+  const NOT_SUBMIT_TEXT = /\b(next|continue|back|previous|search|subscribe|sign ?in|log ?in|sign ?up|upload|add (another|more)|save (and|&) (continue|next)|save draft|cancel)\b/i;
+
+  function isFinalSubmit(btn) {
+    if (!btn || btn.closest('[data-hasanify-ignore]')) return false;
+    const text = (textOf(btn) || btn.value || btn.getAttribute('aria-label') || '').trim();
+    return text.length <= 60 && SUBMIT_TEXT.test(text) && !NOT_SUBMIT_TEXT.test(text);
+  }
+
+  /** All fillable controls in scope (not only the ones Hasanify processed). */
+  function allFields(scope) {
+    const out = [];
+    const seen = new Set();
+    for (const el of queryAllDeep(FIELD_SELECTOR)) {
+      if (scope && scope !== document && !scope.contains(el)) continue;
+      if (el.closest('[data-hasanify-ignore]')) continue;
+      const kind = getKind(el);
+      if (!kind || !isFillable(el)) continue;
+      const field = { el, kind };
+      if (kind === 'radio' || kind === 'checkbox') {
+        const container = getGroupContainer(el);
+        const members = getGroupMembers(el, container);
+        if (kind === 'checkbox' && members.length > 1) field.kind = 'checkbox-group';
+        if (field.kind !== 'checkbox') {
+          if (seen.has(members[0])) continue;
+          seen.add(members[0]);
+          field.el = members[0];
+        }
+        field.container = container;
+        field.members = members;
+      }
+      out.push(field);
+    }
+    return out;
+  }
+
+  function uploadLooksDone(field) {
+    const up = state.uploads.get(field.el);
+    if (up?.done) return true;
+    // Custom uploaders often clear the <input> after sending the file: trust a file name shown nearby.
+    const box = field.el.closest('[class*="upload"], [class*="Upload"], [class*="drop"], [data-automation-id*="file"], fieldset, .field, li, div');
+    return !!box && /\.(pdf|docx?|txt|rtf|odt|pages)\b/i.test(textOf(box));
+  }
+
+  function otherCompanyIn(text) {
+    const current = norm(currentCompany());
+    const own = new Set([...(state.profile?.experience ?? []).map((e) => norm(e.company)), ...(state.profile?.education ?? []).map((e) => norm(e.school))]);
+    const t = ` ${norm(text)} `;
+    for (const c of state.companies) {
+      const n = norm(c);
+      if (n.length < 3 || n === current || own.has(n) || (current && (current.includes(n) || n.includes(current)))) continue;
+      if (t.includes(` ${n} `)) return c;
+    }
+    return null;
+  }
+
+  function collectSubmitIssues(scope) {
+    const issues = [];
+    for (const field of allFields(scope)) {
+      const label = cleanLabel(collectSignals(field).rawLabel) || 'Unlabeled field';
+      const info = state.registry.get(field.el);
+      if (field.kind === 'file') {
+        if (isRequired(field, label) && !hasExistingValue(field) && !uploadLooksDone(field)) issues.push({ kind: 'required', label, el: focusTarget(field) });
+        const name = field.el.files?.[0]?.name ?? state.uploads.get(field.el)?.fileName ?? '';
+        const other = name && otherCompanyIn(name.replace(/[_.-]+/g, ' '));
+        if (other) issues.push({ kind: 'company', label, detail: `File “${name}” looks like it was made for ${other}`, el: focusTarget(field) });
+        continue;
+      }
+      if (isRequired(field, label) && !hasExistingValue(field)) {
+        issues.push({ kind: 'required', label, el: focusTarget(field) });
+        continue;
+      }
+      if (info?.status === 'filled' && info.review && !info.reviewed) {
+        issues.push({ kind: 'review', label, detail: info.review, el: focusTarget(field), id: info.id });
+      }
+      if (field.kind === 'text' || field.kind === 'textarea') {
+        const v = field.el.value ?? '';
+        if (/\{company\}/i.test(v)) issues.push({ kind: 'company', label, detail: 'Still contains the {company} placeholder', el: field.el });
+        else if (v.length >= 12) {
+          const other = otherCompanyIn(v);
+          if (other) issues.push({ kind: 'company', label, detail: `Mentions ${other} — this application is for ${currentCompany() || 'another company'}`, el: field.el });
+        }
+      }
+    }
+    const order = { required: 0, company: 1, review: 2 };
+    return issues.sort((a, b) => order[a.kind] - order[b.kind]);
+  }
+
+  /** Capture-phase gate in front of the page's own submit handlers. */
+  function onPossibleSubmit(e) {
+    if (!e.isTrusted || !state.settings?.preSubmitCheck || Date.now() < state.submitBypassUntil) return;
+    if (!state.registry.size) return; // only on forms Hasanify actually worked on
+    let btn = null, form = null;
+    if (e.type === 'click') {
+      const t = e.composedPath?.()[0] ?? e.target;
+      btn = t instanceof Element ? t.closest('button, input[type="submit"], [role="button"], a') : null;
+      if (!isFinalSubmit(btn)) return;
+      form = btn.form ?? btn.closest('form');
+    } else {
+      form = e.target;
+      btn = e.submitter;
+      if (btn ? !isFinalSubmit(btn) : ![...form.querySelectorAll('button, input[type="submit"]')].some(isFinalSubmit)) return;
+    }
+    const issues = collectSubmitIssues(form ?? document);
+    if (!issues.length) return;
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const proceed = () => {
+      state.submitBypassUntil = Date.now() + 5000;
+      if (e.type === 'submit' && form?.isConnected) {
+        btn?.isConnected ? form.requestSubmit(btn) : form.requestSubmit();
+      } else if (btn?.isConnected) {
+        btn.click();
+      }
+    };
+    if (presubmitUI) {
+      emit('presubmit', { issues, proceed });
+    } else {
+      // No widget in this frame: a plain confirm still prevents the mistake.
+      const lines = issues.slice(0, 8).map((i) => `• ${i.label}${i.detail ? ` — ${i.detail}` : i.kind === 'required' ? ' — required, empty' : ''}`);
+      if (confirm(`Hasanify: before you submit\n\n${lines.join('\n')}\n\nSubmit anyway?`)) proceed();
+    }
+  }
+  let presubmitUI = false; // the widget sets this when it can show the check
+  window.addEventListener('click', onPossibleSubmit, true);
+  window.addEventListener('submit', onPossibleSubmit, true);
+
+  /** The user looked at / edited a flagged field: it no longer needs checking. */
+  function clearReviewFor(e) {
+    if (!e.isTrusted) return;
+    const t = e.composedPath?.()[0] ?? e.target;
+    if (!(t instanceof Element)) return;
+    for (const info of state.registry.values()) {
+      if (!info.review || info.reviewed || !info.field) continue;
+      const f = info.field;
+      if (f.el === t || f.el.contains(t) || f.members?.includes(t) || f.container?.contains(t) || t.closest?.('label')?.control === f.el) {
+        confirmReview(info.id);
+        return;
+      }
+    }
+  }
+
+  /** "Looks right": the user confirmed a field Hasanify flagged. */
+  function confirmReview(id) {
+    for (const info of state.registry.values()) {
+      if (info.id !== id) continue;
+      info.reviewed = true;
+      if (info.field && info.status === 'filled') mark(info.field, 'filled');
+    }
+    emit('learning-changed', {});
   }
 
   // ---- Engine API for the in-page widget (ui/widget.js) -------------------
@@ -1696,6 +2187,7 @@
       answer: templatize(entry.answer),
       kind: entry.kind,
       host: location.hostname,
+      ctx: jobContext(), // which job this answer was given for (variants per context)
     }).catch(() => null);
     if (!res?.ok) { entry.status = 'pending'; emit('learning-changed', {}); return false; }
     return true;
@@ -1723,21 +2215,25 @@
       const entry = state.learn.get(f.el);
       const missed = MISSED.has(info.status);
       const corrected = entry?.origin === 'filled' && entry.status !== 'idle';
-      if (!missed && !corrected) continue;
+      const review = info.status === 'filled' && info.review && !info.reviewed && !corrected;
+      if (!missed && !corrected && !review) continue;
       if (missed && !info.label) continue;
       rows.push({
         id: entry?.id ?? null,
+        rid: info.id,
         label: cleanLabel(info.label) || 'Unlabeled field',
-        reason: corrected ? 'You changed this' : REASONS[info.status],
+        reason: corrected ? 'You changed this' : review ? info.review : REASONS[info.status],
+        review: !!review,
+        value: review ? readAnswer(f).slice(0, 80) : '',
         required: isRequired(f, info.label),
-        answered: hasExistingValue(f),
+        answered: !review && hasExistingValue(f),
         learn: entry && entry.status !== 'idle' ? { status: entry.status, answer: entry.answer } : null,
         learnable: !!entry,
         el: focusTarget(f),
       });
     }
-    // Required unanswered first, then learning prompts, then the rest.
-    const rank = (r) => (r.required && !r.answered ? 0 : r.learn?.status === 'pending' ? 1 : 2);
+    // Required unanswered first, then "check this", then learning prompts, then the rest.
+    const rank = (r) => (r.required && !r.answered && !r.review ? 0 : r.review ? 1 : r.learn?.status === 'pending' ? 2 : 3);
     return rows.sort((a, b) => rank(a) - rank(b));
   }
 
@@ -1761,7 +2257,9 @@
         attention.push({ label: (info.label || 'Unlabeled field').replace(/\s*\*\s*$/, ''), el: focusTarget(info.field), status: info.status });
       }
     }
-    return { filled, matched, seen, attention, report: getReport(), uploads: getUploads(), armed: state.armed,
+    const report = getReport();
+    return { filled, matched, seen, attention, report, uploads: getUploads(), armed: state.armed,
+      review: report.filter((r) => r.review).length, aiNotice: state.settings?.aiAssist ? state.aiNotice : '',
       learningMode: state.settings?.learningMode ?? 'ask' };
   }
 
@@ -1816,7 +2314,7 @@
     if (/greenhouse\.io|lever\.co|ashbyhq\.com|smartrecruiters\.com|workable\.com|jobvite\.com/.test(host) && path[0]) company = titleCase(path[0]);
     else if (/myworkdayjobs|myworkdaysite/.test(host)) company = titleCase(host.split('.')[0]);
     else if (/bamboohr\.com/.test(host)) company = titleCase(host.split('.')[0]);
-    company ||= meta('og:site_name') || titleCase(siteOf(host).split('.')[0]);
+    company ||= String(jobPostingLd()?.hiringOrganization?.name ?? '').trim() || meta('og:site_name') || titleCase(siteOf(host).split('.')[0]);
 
     const heading = document.querySelector('h1, [data-automation-id="jobPostingHeader"], .posting-headline h2, [class*="job-title" i]');
     let title = (heading?.textContent || meta('og:title') || document.title || '').replace(/\s+/g, ' ').trim();
@@ -1877,6 +2375,8 @@
     getProfile: () => state.profile,
     loadContext,
     setArmed: (v) => { setArmed(v); if (v) scheduleRun(); emit('armed', { armed: state.armed }); },
+    confirmReview,
+    setPresubmitUI: (v) => { presubmitUI = !!v; },
   });
 
   /**
@@ -1955,6 +2455,7 @@
     if (location.href !== state.lastUrl) {
       state.lastUrl = location.href;
       cachedCompany = null;
+      cachedJobCtx = null;
       pruneRegistry();
       for (const el of state.learn.keys()) if (!el.isConnected) state.learn.delete(el);
       for (const el of state.uploads.keys()) if (!el.isConnected) state.uploads.delete(el);
@@ -2122,6 +2623,7 @@
         if (entry) entry.touched = true;
         return;
       }
+      if (type !== 'click' || e.isTrusted) clearReviewFor(e);
       onUserInteraction(e);
     }, true);
   }
@@ -2141,7 +2643,8 @@
       state.armed = true;
       startArmedPoll();
       emit('armed', { armed: true });
-      await waitForQuiet(); // let the SPA finish hydrating before the first pass
+      // Let the SPA finish hydrating before the first pass (longer on sites known to re-render late).
+      await (state.siteNote?.slow ? waitForQuiet(1500, 10000) : waitForQuiet());
       scheduleRun();
     } else if (tab.recent) {
       // The application continued on another domain. Forms often render late,

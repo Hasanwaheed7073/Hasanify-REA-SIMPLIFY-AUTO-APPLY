@@ -14,7 +14,7 @@
  */
 'use strict';
 
-importScripts('shared/profile-schema.js');
+importScripts('shared/profile-schema.js', 'shared/ai.js');
 
 const { DEFAULT_PROFILE, DEFAULT_SETTINGS, mergeWithDefaults, validateProfile } = self.HasanifySchema;
 
@@ -49,6 +49,7 @@ async function saveProfile(input) {
   const { valid, errors } = validateProfile(merged);
   if (!valid) return { ok: false, errors };
   await chrome.storage.local.set({ [KEYS.profile]: merged });
+  await clearAiCache(); // AI answers were derived from the old profile
   return { ok: true, profile: merged };
 }
 
@@ -159,19 +160,48 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 // Learning: answers the user gave, and questions Hasanify missed
 // ───────────────────────────────────────────────────────────────────────────
 
+const COMPANIES_KEY = 'hasanify.companies';   // employers of applications filled (newest first)
+const SITE_NOTES_KEY = 'hasanify.siteNotes';   // { [site]: { slow, at } }
+/** Dashboard / popup / side panel — not a web page's content script. */
+const isExtensionPage = (sender) => !sender.tab || String(sender.url ?? '').startsWith(`chrome-extension://${chrome.runtime.id}/`);
 const MISSED_KEY = 'hasanify.missed';          // { [key]: { question, count, firstSeen, lastSeen, hosts, reason, required, learned } }
 const MISSED_IGNORED_KEY = 'hasanify.missedIgnored'; // [key]
 const MISSED_CAP = 400;
 
 /** Upsert a learned custom answer (keyed by normalized, {company}-templated question). */
-async function learnAnswer({ question, key, answer, kind, host }) {
+/**
+ * Learned answers keep VARIANTS per job context. The same question can have a
+ * different right answer for a senior vs junior role, remote vs on-site, or
+ * another country, and each site remembers what you used there last time.
+ *   • same answer already known          → refresh that variant's context
+ *   • same site, or same seniority/remote/country → that variant is replaced
+ *   • otherwise                           → a new variant is added (max 6 per question)
+ */
+const ctxClass = (c) => `${c?.seniority ?? ''}|${c?.remote ?? ''}|${c?.country ?? ''}`;
+const MAX_VARIANTS = 6;
+
+async function learnAnswer({ question, key, answer, kind, host, ctx }) {
   if (!question || !key || !answer) return { ok: false, error: 'Nothing to learn' };
   const profile = await getProfile();
   const list = profile.customAnswers ?? [];
-  const existing = list.find((c) => c.source === 'learned' && c.key === key);
+  const variants = list.filter((c) => c.source === 'learned' && c.key === key);
   const now = Date.now();
-  if (existing) Object.assign(existing, { answer, kind, learnedFrom: host ?? existing.learnedFrom, updatedAt: now });
-  else list.push({ question, answer, isRegex: false, source: 'learned', key, kind, learnedFrom: host ?? '', updatedAt: now });
+  const cleanCtx = ctx && typeof ctx === 'object'
+    ? { site: String(ctx.site ?? ''), seniority: String(ctx.seniority ?? ''), remote: String(ctx.remote ?? ''), country: String(ctx.country ?? '') }
+    : null;
+  const existing =
+    variants.find((c) => c.answer === answer) ??
+    (cleanCtx && variants.find((c) => c.ctx?.site && c.ctx.site === cleanCtx.site)) ??
+    (cleanCtx && variants.find((c) => c.ctx && ctxClass(c.ctx) === ctxClass(cleanCtx))) ??
+    (!cleanCtx ? (variants.find((c) => !c.ctx) ?? variants[0]) : null);
+  if (existing) {
+    Object.assign(existing, { answer, kind, learnedFrom: host ?? existing.learnedFrom, updatedAt: now, ...(cleanCtx ? { ctx: cleanCtx } : {}) });
+  } else {
+    list.push({ question, answer, isRegex: false, source: 'learned', key, kind, learnedFrom: host ?? '', updatedAt: now, ...(cleanCtx ? { ctx: cleanCtx } : {}) });
+    // Too many variants: drop the oldest.
+    const all = list.filter((c) => c.source === 'learned' && c.key === key).sort((a, b) => a.updatedAt - b.updatedAt);
+    for (const old of all.slice(0, Math.max(0, all.length - MAX_VARIANTS))) list.splice(list.indexOf(old), 1);
+  }
   profile.customAnswers = list;
   const res = await saveProfile(profile);
   if (!res.ok) return res;
@@ -295,7 +325,38 @@ chrome.tabs.onUpdated.addListener((tabId, info) => {
 
 const HANDLERS = {
   // content script ← needs data to fill with
-  'hasanify:getContext': async () => ({ ok: true, profile: await getProfile(), settings: await getSettings() }),
+  'hasanify:getContext': async (msg) => {
+    const { [COMPANIES_KEY]: companies = [], [SITE_NOTES_KEY]: notes = {}, 'hasanify.applications': apps = [] } =
+      await chrome.storage.local.get([COMPANIES_KEY, SITE_NOTES_KEY, 'hasanify.applications']);
+    const all = [...new Set([...companies, ...apps.map((a) => a?.company).filter(Boolean)])];
+    return { ok: true, profile: await getProfile(), settings: await getSettings(), companies: all, siteNote: notes[msg.site] ?? null };
+  },
+
+  // content script → employer of an application it filled (for the wrong-company check)
+  'hasanify:noteCompany': async (msg) => {
+    const c = String(msg.company ?? '').trim();
+    if (c.length < 3 || c.length > 60) return { ok: false };
+    const { [COMPANIES_KEY]: list = [] } = await chrome.storage.local.get(COMPANIES_KEY);
+    await chrome.storage.local.set({ [COMPANIES_KEY]: [c, ...list.filter((x) => x.toLowerCase() !== c.toLowerCase())].slice(0, 300) });
+    return { ok: true };
+  },
+  // content script → what it learned about a site's form (e.g. re-renders late)
+  'hasanify:siteNote': async (msg) => {
+    if (!msg.site) return { ok: false };
+    const { [SITE_NOTES_KEY]: notes = {} } = await chrome.storage.local.get(SITE_NOTES_KEY);
+    notes[msg.site] = { ...notes[msg.site], ...msg.note, at: Date.now() };
+    await chrome.storage.local.set({ [SITE_NOTES_KEY]: notes });
+    return { ok: true };
+  },
+
+  // AI assist — the key never leaves the background
+  'hasanify:aiResolve': async (msg) => {
+    if (!(await getSettings()).aiAssist) return { ok: false, error: 'AI assist is off' };
+    return resolveQuestions(msg.items, msg.job, await getProfile());
+  },
+  'hasanify:aiGetConfig': () => getAiPublicConfig().then((config) => ({ ok: true, config })),
+  'hasanify:aiSaveConfig': (msg, sender) => (isExtensionPage(sender) ? saveAiConfig(msg) : { ok: false, error: 'Not allowed' }),
+  'hasanify:aiTest': (msg, sender) => (isExtensionPage(sender) ? testAi() : { ok: false, error: 'Not allowed' }),
 
   // popup → persistence
   'hasanify:getProfile': async () => ({ ok: true, profile: await getProfile() }),

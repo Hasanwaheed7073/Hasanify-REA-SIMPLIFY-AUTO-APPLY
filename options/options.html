@@ -355,7 +355,26 @@
         <div class="switch-row"><div><b>Show assistant on job pages</b><span>Floating Hasanify button on application forms.</span></div><label class="switch"><input type="checkbox" data-setting="showWidget" /><i></i></label></div>
         <div class="switch-row"><div><b>Autofill automatically on known ATS sites</b><span>Workday, Greenhouse, Lever, Ashby and others fill as soon as the form loads.</span></div><label class="switch"><input type="checkbox" data-setting="autoFillOnKnownATS" /><i></i></label></div>
         <div class="switch-row"><div><b>Overwrite existing values</b><span>Replace what's already in a field instead of skipping it.</span></div><label class="switch"><input type="checkbox" data-setting="overwriteExisting" /><i></i></label></div>
-        <div class="switch-row"><div><b>Highlight filled fields</b><span>Green outline on fields Hasanify filled.</span></div><label class="switch"><input type="checkbox" data-setting="highlightFields" /><i></i></label></div>
+        <div class="switch-row"><div><b>Highlight filled fields</b><span>Green outline on fields Hasanify filled; amber on fields it wasn't sure about.</span></div><label class="switch"><input type="checkbox" data-setting="highlightFields" /><i></i></label></div>
+        <div class="switch-row"><div><b>Check before I submit</b><span>When you click Submit, Hasanify looks for empty required fields, answers it wasn't sure about, and answers or files that name a different company.</span></div><label class="switch"><input type="checkbox" data-setting="preSubmitCheck" /><i></i></label></div>
+
+        <div class="subhead">AI assist <span class="pill-soft">optional · your own API key</span></div>
+        <div class="switch-row"><div><b>Use AI for questions the rules can't answer</b><span>Understands questions phrased in unexpected ways and picks the right option from dropdowns (e.g. “3–5 years”, “Bachelor's or equivalent”). Answers come only from your profile; AI-filled fields are always marked amber for you to check.</span></div><label class="switch"><input type="checkbox" data-setting="aiAssist" /><i></i></label></div>
+        <div class="ai-config" id="aiConfig">
+          <div class="grid">
+            <label class="field"><span>Provider</span><select id="aiProvider"></select></label>
+            <label class="field"><span>Model</span><input id="aiModel" placeholder="" autocomplete="off" spellcheck="false" /></label>
+            <label class="field span-2"><span>API key</span><input id="aiKey" type="password" placeholder="Paste your API key" autocomplete="off" spellcheck="false" /></label>
+            <label class="field span-2" id="aiBaseRow" hidden><span>Base URL (OpenAI-compatible)</span><input id="aiBaseUrl" placeholder="http://localhost:11434/v1" autocomplete="off" spellcheck="false" /></label>
+          </div>
+          <div class="row-end ai-actions">
+            <span class="ai-status" id="aiStatus"></span>
+            <button class="btn btn-sm btn-ghost" id="aiClearKey" hidden>Remove key</button>
+            <button class="btn btn-sm" id="aiTest">Test connection</button>
+            <button class="btn btn-sm btn-primary" id="aiSave">Save</button>
+          </div>
+          <p class="fineprint">Your key is stored only in this browser and used only by Hasanify's background worker — job sites never see it. Sent to your provider: the questions Hasanify couldn't answer, their options, and your profile (without your resume, cover letter or diversity answers).</p>
+        </div>
       </section>
 
       <footer class="page-foot">Hasanify stores everything locally in your browser.</footer>
@@ -443,5 +462,6 @@
   <script src="options.js"></script>
   <script src="ai-builder.js"></script>
   <script src="learning.js"></script>
+  <script src="ai-settings.js"></script>
 </body>
 </html>
