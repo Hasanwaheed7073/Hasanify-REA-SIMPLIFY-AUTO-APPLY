@@ -100,3 +100,12 @@ $('dashLink').addEventListener('click', openDashboard);
 $('profileCard').addEventListener('click', openDashboard);
 
 init().catch((err) => { $('heroSub').textContent = String(err?.message ?? err); });
+
+// Support: copy the page's form structure (labels, field ids, what Hasanify decided — no values).
+$('diagLink').addEventListener('click', async () => {
+  const link = $('diagLink');
+  const res = await send('hasanify:collectDiagnostics');
+  if (!res?.ok) { link.textContent = res?.error ?? 'Could not read this page'; return; }
+  await navigator.clipboard.writeText(res.text);
+  link.textContent = 'Copied — paste it in your message';
+});

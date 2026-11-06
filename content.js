@@ -1624,6 +1624,59 @@
   }
 
   /**
+   * Workday "My Experience": Work Experience and Education
+   * start as an empty section with an "Add" button — the fields don't exist
+   * until it's clicked. Click Add (then "Add Another") until the section has as
+   * many entries as the profile, never more, and never in sections the user
+   * already filled further.
+   */
+  const ADD_SECTIONS = [
+    { kind: 'experience', heading: /work experience|employment history|work history/i, entry: /job ?title|jobtitle/i, count: (p) => p.experience?.length ?? 0 },
+    { kind: 'education', heading: /\beducation\b/i, entry: /school|university|college|institution/i, count: (p) => p.education?.length ?? 0 },
+    // Websites / Languages are left alone for now: their new entries are generic
+    // ("URL", "Language") and can't yet be mapped to a specific profile value.
+  ];
+
+  function addSectionOf(btn) {
+    // Nearest ancestor (≤ 8 levels) with a short heading naming the section.
+    let node = btn.parentElement;
+    for (let i = 0; i < 8 && node && node !== document.body; i++, node = node.parentElement) {
+      const h = node.querySelector(':scope > h2, :scope > h3, :scope > h4, :scope > legend, :scope > div > h3, :scope > div > h4, :scope > [role="heading"]');
+      const text = (h?.textContent ?? node.getAttribute('aria-label') ?? '').trim();
+      if (text && text.length <= 50) {
+        const def = ADD_SECTIONS.find((s) => s.heading.test(text));
+        if (def) return { def, root: node };
+      }
+    }
+    return null;
+  }
+
+  async function expandAddSections() {
+    if (!/myworkday(jobs|site)?\.com$|\.workday\.com$/.test(location.hostname) || !state.profile) return 0;
+    let clicks = 0;
+    for (let round = 0; round < 10; round++) {
+      const btn = [...document.querySelectorAll('button, [role="button"]')].find((b) => {
+        if (!isVisible(b) || b.disabled || b.closest('[data-hasanify-ignore]')) return false;
+        const label = (textOf(b) || b.getAttribute('aria-label') || '').trim();
+        if (!/^add( another)?\b/i.test(label) || label.length > 40) return false;
+        const sec = addSectionOf(b);
+        if (!sec) return false;
+        const have = [...sec.root.querySelectorAll('input, textarea')].filter((el) => {
+          const sig = `${el.getAttribute('data-automation-id') ?? ''} ${el.name ?? ''} ${el.id ?? ''} ${el.labels?.[0]?.textContent ?? ''} ${el.getAttribute('aria-label') ?? ''}`;
+          return sec.def.entry.test(sig);
+        }).length;
+        return have < sec.def.count(state.profile);
+      });
+      if (!btn) break;
+      realClick(btn);
+      clicks++;
+      await sleep(700); // Workday renders the new entry asynchronously
+    }
+    if (clicks) log(`expanded ${clicks} Add section(s)`);
+    return clicks;
+  }
+
+  /**
    * One pass over the page. Safe to call repeatedly: processed elements are
    * remembered, and only new (or previously failed) fields are attempted.
    */
@@ -1643,6 +1696,7 @@
         for (const [el, info] of state.registry) if (info.status !== 'filled') state.registry.delete(el);
       }
 
+      await expandAddSections(); // Workday: reveal Work Experience / Education / Websites entries first
       const fields = scanFields();
       const stats = { filled: 0, matched: 0, total: fields.length, unmatched: [] };
       // Nothing new (typical for class/focus churn): stay silent — no progress UI, no report.
@@ -2045,6 +2099,47 @@
     }
   }
 
+  /**
+   * Diagnostics for support: the STRUCTURE of the form on this page and what
+   * Hasanify made of each control. Contains labels and the site's own field
+   * ids — never the values typed into the fields.
+   */
+  function diagnostics() {
+    const lines = [];
+    const host = location.hostname;
+    const head = (document.querySelector('h2, [data-automation-id*="pageHeader"], [data-automation-id="progressBarActiveStep"]')?.textContent ?? '').trim().slice(0, 80);
+    lines.push(`Hasanify ${chrome.runtime.getManifest().version} diagnostics`);
+    lines.push(`page: ${host}${location.pathname}  (${window === window.top ? 'top' : 'iframe'})`);
+    lines.push(`step: ${head || '?'} · armed: ${state.armed} · profile loaded: ${!!state.profile}`);
+    const aid = (el) => el.getAttribute('data-automation-id') || el.closest('[data-automation-id]')?.getAttribute('data-automation-id') || '';
+    const all = queryAllDeep(FIELD_SELECTOR).filter((el) => !el.closest('[data-hasanify-ignore]'));
+    lines.push(`controls: ${all.length} total`);
+    for (const el of all.slice(0, 120)) {
+      const kind = getKind(el) ?? '-';
+      const fillable = kind !== '-' && isFillable(el);
+      let key = '', score = '', label = '';
+      try {
+        const sig = collectSignals({ el, kind, ...(kind === 'radio' || kind === 'checkbox' ? { container: getGroupContainer(el), members: getGroupMembers(el, getGroupContainer(el)) } : {}) });
+        label = cleanLabel(sig.rawLabel).slice(0, 70);
+        const m = fillable && state.profile ? classify(sig) : null;
+        key = m?.custom ? 'custom-answer' : m?.def?.key ?? '';
+        score = m && m.score !== Infinity ? m.score : '';
+      } catch (err) { key = `error: ${String(err).slice(0, 40)}`; }
+      const reg = state.registry.get(el);
+      lines.push([
+        `${el.tagName.toLowerCase()}${el.type ? `[${el.type}]` : ''}${el.getAttribute('role') ? `{${el.getAttribute('role')}}` : ''}`,
+        `kind=${kind}`, fillable ? '' : 'NOT-FILLABLE', `aid=${aid(el)}`, el.name ? `name=${el.name}` : '', el.id ? `id=${el.id.slice(0, 50)}` : '',
+        `label="${label}"`, key ? `→ ${key}${score !== '' ? ` (${score})` : ''}` : '→ unmatched', reg ? `status=${reg.status}` : '',
+        `has-value=${kind !== '-' ? hasExistingValue({ el, kind, members: kind === 'radio' ? getGroupMembers(el, getGroupContainer(el)) : undefined }) : '?'}`,
+      ].filter(Boolean).join('  '));
+    }
+    // Buttons that reveal more fields (Workday "Add", "Add Another") — worth knowing about.
+    const buttons = [...document.querySelectorAll('button, [role="button"]')].filter((b) => isVisible(b) && !b.closest('[data-hasanify-ignore]'))
+      .map((b) => `${(textOf(b) || b.getAttribute('aria-label') || '').trim().slice(0, 30)}${aid(b) ? ` [${aid(b)}]` : ''}`).filter((t) => t.trim()).slice(0, 40);
+    lines.push(`buttons: ${buttons.join(' | ')}`);
+    return lines.join('\n');
+  }
+
   /** "Looks right": the user confirmed a field Hasanify flagged. */
   function confirmReview(id) {
     for (const info of state.registry.values()) {
@@ -2413,6 +2508,7 @@
     loadContext,
     setArmed: (v) => { setArmed(v); if (v) scheduleRun(); emit('armed', { armed: state.armed }); },
     confirmReview,
+    diagnostics,
     setPresubmitUI: (v) => { presubmitUI = !!v; },
   });
 

@@ -376,6 +376,22 @@ const HANDLERS = {
   },
 
   // content script → employer of an application it filled (for the wrong-company check)
+  // popup → form structure of every frame in the active tab (for support; no field values)
+  'hasanify:collectDiagnostics': async () => {
+    const tabId = await getActiveTabId();
+    if (tabId == null) return { ok: false, error: 'No active tab' };
+    let results = [];
+    try {
+      results = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: () => globalThis.HasanifyEngine?.diagnostics?.() ?? null });
+    } catch (err) {
+      return { ok: false, error: String(err?.message ?? err) };
+    }
+    const parts = results.map((r) => r.result).filter(Boolean);
+    return parts.length
+      ? { ok: true, text: parts.join('\n\n──── frame ────\n') }
+      : { ok: false, error: 'Hasanify is not running on this page — reload it and try again' };
+  },
+
   // content script → the user clicked the final Submit on a form Hasanify filled
   'hasanify:logApplication': (msg) => logApplication(msg.app),
 

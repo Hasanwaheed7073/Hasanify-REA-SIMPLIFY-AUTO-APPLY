@@ -59,6 +59,7 @@
     .foot { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px 13px; border-top: 1px solid var(--line-2); font: 11.5px var(--mono); color: var(--faint); }
     .foot a { color: var(--brand); font: 600 12.5px var(--font); text-decoration: none; cursor: pointer; }
     .foot a:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .foot a.muted-link { color: var(--muted); font: 500 12px var(--font); }
   </style>
 </head>
 <body>
@@ -92,7 +93,7 @@
     <div class="switch-row"><div><b>Show on-page assistant</b></div><label class="switch"><input type="checkbox" data-setting="showWidget" /><i></i></label></div>
   </div>
 
-  <div class="foot"><span>Alt+Shift+F to autofill</span><a id="dashLink">Open dashboard</a></div>
+  <div class="foot"><a id="diagLink" class="muted-link" title="Copies the structure of this page's form (no personal values) to send for support">Copy diagnostics</a><a id="dashLink">Open dashboard</a></div>
 
   <script src="../shared/profile-schema.js"></script>
   <script src="../ui/icons.js"></script>

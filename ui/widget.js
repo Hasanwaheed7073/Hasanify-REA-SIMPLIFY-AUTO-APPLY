@@ -198,6 +198,8 @@
     .profile-card .txt b { display: block; color: var(--ink); font-size: 13px; }
     .link { color: var(--brand); font-weight: 600; font-size: 12.5px; }
     .link:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .foot-links { display: flex; gap: 12px; align-items: center; }
+    .link.muted { color: var(--muted); font-weight: 500; font-size: 11.5px; }
 
     .foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px;
       border-top: 1px solid var(--line-2); background: var(--sheet); }
@@ -351,7 +353,7 @@
           <div class="toggle" role="switch" tabindex="0" aria-checked="false" data-act="armed">
             <span class="switch"></span><span>Autofill next steps</span>
           </div>
-          <button class="link" data-act="profile">Profile</button>
+          <span class="foot-links"><button class="link muted" data-act="diag" title="Copy the structure of this form (no personal values) to send for support">Copy diagnostics</button><button class="link" data-act="profile">Profile</button></span>
         </footer>
       </section>
     </div>`;
@@ -726,6 +728,17 @@
     if (act === 'minimize') setOpen(false);
     if (act === 'close') { ui.dismissed = true; host.remove(); engine.setPresubmitUI?.(false); }
     if (act === 'ps-fix') closePresubmit(true);
+    if (act === 'diag') {
+      const btn = e.target.closest('[data-act="diag"]');
+      try {
+        await navigator.clipboard.writeText(engine.diagnostics());
+        btn.textContent = 'Copied — paste it to support';
+      } catch {
+        btn.textContent = 'Copy failed — see console';
+        console.log(engine.diagnostics());
+      }
+      setTimeout(() => { btn.textContent = 'Copy diagnostics'; }, 2500);
+    }
     if (act === 'ps-go') { const go = ui.presubmit?.proceed; closePresubmit(false); go?.(); }
     if (act === 'armed') engine.setArmed(!engine.getSummary().armed);
     if (act === 'profile') chrome.runtime.sendMessage({ type: 'hasanify:openOptions' }).catch(() => {});
