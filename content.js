@@ -1698,10 +1698,11 @@
       recordMissed(missedItems);
       if (stats.filled) noteCompany();
       const summary = getSummary();
+      stats.todo = summary.todo; // same "needs you" count the assistant shows
       emit('run-end', summary);
       if (fields.length) {
         // Report page-cumulative totals (multi-step forms run many passes), not this pass only.
-        const report = { ...stats, filled: state.filledEver.size, matched: summary.matched, total: summary.seen };
+        const report = { ...stats, filled: state.filledEver.size, matched: summary.matched, total: summary.seen, todo: summary.todo };
         chrome.runtime.sendMessage({ type: 'hasanify:report', stats: report }).catch(() => {});
       }
       // Keep the tab's application session fresh (and remember this site),
@@ -1966,8 +1967,9 @@
 
   /** Capture-phase gate in front of the page's own submit handlers. */
   function onPossibleSubmit(e) {
-    if (!e.isTrusted || !state.settings?.preSubmitCheck || Date.now() < state.submitBypassUntil) return;
     if (!state.registry.size) return; // only on forms Hasanify actually worked on
+    const bypass = Date.now() < state.submitBypassUntil; // "Submit anyway" (our own click is untrusted)
+    if (!e.isTrusted && !bypass) return;
     let btn = null, form = null;
     if (e.type === 'click') {
       const t = e.composedPath?.()[0] ?? e.target;
@@ -1979,8 +1981,11 @@
       btn = e.submitter;
       if (btn ? !isFinalSubmit(btn) : ![...form.querySelectorAll('button, input[type="submit"]')].some(isFinalSubmit)) return;
     }
-    const issues = collectSubmitIssues(form ?? document);
-    if (!issues.length) return;
+    const issues = bypass || !state.settings?.preSubmitCheck ? [] : collectSubmitIssues(form ?? document);
+    if (!issues.length) {
+      logSubmitted(form);
+      return;
+    }
 
     e.preventDefault();
     e.stopImmediatePropagation();
@@ -2001,6 +2006,27 @@
     }
   }
   let presubmitUI = false; // the widget sets this when it can show the check
+
+  /**
+   * Tracker: the final Submit went through → record the application (company,
+   * role, link, which resume file was attached). Once per page; skipped when
+   * the browser's own validation is about to block the submit.
+   */
+  function logSubmitted(form) {
+    try {
+      if (form && !form.noValidate && typeof form.checkValidity === 'function' && !form.checkValidity()) return;
+    } catch { /* detached form */ }
+    const info = (() => { try { return getPageInfo(); } catch { return null; } })();
+    if (!info?.url || state.loggedApp === info.url) return;
+    state.loggedApp = info.url;
+    const ups = [...state.uploads.values()];
+    const resume = ups.find((u) => u.kind === 'resume' && u.done && u.fileName)?.fileName
+      ?? ups.find((u) => u.isFile && u.done && u.fileName && /resume|cv/i.test(u.label + u.fileName))?.fileName ?? '';
+    chrome.runtime.sendMessage({
+      type: 'hasanify:logApplication',
+      app: { url: info.url, title: info.title, company: info.company, ats: info.ats, resume },
+    }).then((res) => res?.ok && emit('application-logged', { company: info.company, created: res.created })).catch(() => {});
+  }
   window.addEventListener('click', onPossibleSubmit, true);
   window.addEventListener('submit', onPossibleSubmit, true);
 
@@ -2229,8 +2255,16 @@
         answered: !review && hasExistingValue(f),
         learn: entry && entry.status !== 'idle' ? { status: entry.status, answer: entry.answer } : null,
         learnable: !!entry,
+        problem: info.status === 'no-option' || info.status === 'failed',
         el: focusTarget(f),
       });
+    }
+    // ONE definition of "needs you", shared by the stat, the list title and the badge:
+    // an empty required field, a fill to check, a save-this-answer prompt, or a
+    // field Hasanify tried and couldn't fill. Unrecognized optional questions are
+    // listed (collapsed) but don't count.
+    for (const r of rows) {
+      r.action = !r.answered && (r.review || r.required || r.problem) || r.learn?.status === 'pending';
     }
     // Required unanswered first, then "check this", then learning prompts, then the rest.
     const rank = (r) => (r.required && !r.answered && !r.review ? 0 : r.review ? 1 : r.learn?.status === 'pending' ? 2 : 3);
@@ -2258,7 +2292,10 @@
       }
     }
     const report = getReport();
-    return { filled, matched, seen, attention, report, uploads: getUploads(), armed: state.armed,
+    const uploads = getUploads();
+    const uploadsTodo = uploads.filter((u) => !u.done && (u.required || u.kind !== 'other')).length;
+    const todo = report.filter((r) => r.action).length + uploadsTodo;
+    return { filled, matched, seen, attention, report, uploads, todo, armed: state.armed,
       review: report.filter((r) => r.review).length, aiNotice: state.settings?.aiAssist ? state.aiNotice : '',
       learningMode: state.settings?.learningMode ?? 'ask' };
   }

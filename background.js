@@ -161,6 +161,48 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 // ───────────────────────────────────────────────────────────────────────────
 
 const COMPANIES_KEY = 'hasanify.companies';   // employers of applications filled (newest first)
+const APPS_KEY = 'hasanify.applications';      // tracker: [{ id, url, title, company, ats, status, savedAt, appliedAt, followUpAt, resume, source, notes, history }]
+
+// ───────────────────────────────────────────────────────────────────────────
+// Applications tracker
+// ───────────────────────────────────────────────────────────────────────────
+// Statuses move forward only when logged automatically: a re-submit never
+// turns an "interview" back into "applied". The user can set anything by hand.
+
+const APP_STATUSES = ['saved', 'applied', 'interview', 'offer', 'rejected', 'withdrawn'];
+const DAY = 86400000;
+/** Same posting even if the URL picked up tracking params or a /apply suffix. */
+const urlKey = (u) => {
+  try {
+    const x = new URL(u);
+    return `${x.hostname.replace(/^www\./, '')}${x.pathname.replace(/\/(apply|application|thanks|thank-you|confirmation|submitted)\/?$/i, '').replace(/\/+$/, '')}`.toLowerCase();
+  } catch { return String(u ?? '').toLowerCase(); }
+};
+
+async function logApplication(app) {
+  if (!app?.url) return { ok: false, error: 'No URL' };
+  const [{ [APPS_KEY]: apps = [] }, settings] = await Promise.all([chrome.storage.local.get(APPS_KEY), getSettings()]);
+  const now = Date.now();
+  const key = urlKey(app.url);
+  const norm = (s) => String(s ?? '').trim().toLowerCase();
+  const existing = apps.find((a) => urlKey(a.url) === key) ??
+    apps.find((a) => app.company && app.title && norm(a.company) === norm(app.company) && norm(a.title) === norm(app.title) && now - (a.appliedAt ?? a.savedAt ?? 0) < 30 * DAY);
+  const entry = existing ?? { id: `${now}-${Math.random().toString(36).slice(2, 7)}`, url: app.url, savedAt: now, history: [] };
+  entry.title ||= app.title ?? '';
+  entry.company ||= app.company ?? '';
+  entry.ats ||= app.ats ?? '';
+  if (app.resume) entry.resume = app.resume;
+  entry.source ??= 'auto';
+  if (!entry.status || entry.status === 'saved') {
+    entry.status = 'applied';
+    entry.appliedAt = now;
+    entry.followUpAt ??= now + Math.max(1, Number(settings.followUpDays) || 7) * DAY;
+    (entry.history ??= []).push({ status: 'applied', at: now, by: 'auto' });
+  }
+  if (!existing) apps.push(entry);
+  await chrome.storage.local.set({ [APPS_KEY]: apps });
+  return { ok: true, id: entry.id, created: !existing };
+}
 const SITE_NOTES_KEY = 'hasanify.siteNotes';   // { [site]: { slow, at } }
 /** Dashboard / popup / side panel — not a web page's content script. */
 const isExtensionPage = (sender) => !sender.tab || String(sender.url ?? '').startsWith(`chrome-extension://${chrome.runtime.id}/`);
@@ -257,12 +299,13 @@ async function recordReport(tabId, frameId, stats) {
 
 function summarizeTab(tabId) {
   const frames = tabStats.get(tabId);
-  const sum = { filled: 0, matched: 0, total: 0, unmatched: [] };
+  const sum = { filled: 0, matched: 0, total: 0, todo: 0, unmatched: [] };
   if (!frames) return sum;
   for (const s of frames.values()) {
     sum.filled += s.filled ?? 0;
     sum.matched += s.matched ?? 0;
     sum.total += s.total ?? 0;
+    sum.todo += s.todo ?? 0;
     sum.unmatched.push(...(s.unmatched ?? []));
   }
   return sum;
@@ -333,6 +376,9 @@ const HANDLERS = {
   },
 
   // content script → employer of an application it filled (for the wrong-company check)
+  // content script → the user clicked the final Submit on a form Hasanify filled
+  'hasanify:logApplication': (msg) => logApplication(msg.app),
+
   'hasanify:noteCompany': async (msg) => {
     const c = String(msg.company ?? '').trim();
     if (c.length < 3 || c.length > 60) return { ok: false };

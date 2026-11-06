@@ -224,6 +224,7 @@
     resumeMode: 'auto',        // 'auto' attach saved | 'ask' choose per application | 'manual' never touch
     coverLetterMode: 'auto',   // 'auto' fill text boxes with saved letter | 'manual' leave to the user
     dailyGoal: 10,             // applications/day target shown in the side panel
+    followUpDays: 7,           // tracker: suggest a follow-up this many days after applying
     learningMode: 'ask',       // 'ask' offer to save answers you type | 'auto' save silently | 'off'
     aiAssist: false,           // AI fallback for questions/options the rules can't resolve (needs an API key)
     preSubmitCheck: true,      // check required/uncertain fields and wrong company names before you submit

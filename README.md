@@ -20,6 +20,7 @@ A Manifest V3 browser extension that autofills job applications — Workday, Gre
 - **Confidence**: fields Hasanify wasn't sure about (calculated ranges, closest option, similar question, AI) get an amber "check this" outline and are listed in the assistant with what was filled and a **Looks right** button.
 - **Check before submit**: clicking the final *Submit* holds the submit if a required field is empty, a "check this" field wasn't looked at, or an answer / attached file names a different company (a reused cover letter that still says "Globex") — fix it or **Submit anyway**.
 - **AI assist (optional, your own key)**: Claude, OpenAI, Gemini or any OpenAI-compatible endpoint (Ollama, LM Studio…) resolves questions and dropdowns the rules can't, strictly from your profile; choices must be real options, low-confidence answers are dropped, results are cached, and the key never reaches web pages.
+- **Applications tracker**: submitting a form Hasanify filled logs the application (company, role, link, the resume file you attached) — no duplicates on re-submit. The dashboard shows today vs. your goal, this week, total and response rate, a bar per week for the last 8 weeks, follow-ups that are due (7 days after applying by default), status per application (saved → applied → interview → offer / rejected / withdrawn) with history and notes, search, filters, manual entry and CSV export. The side panel shows follow-ups due.
 - **Profile dashboard**: personal info, links, experience, education, skills, work authorization, preferences, voluntary EEO answers, documents and custom Q&A — autosaved and validated against a JSON schema.
 
 ## Install (developer mode)
@@ -39,7 +40,7 @@ A Manifest V3 browser extension that autofills job applications — Workday, Gre
 | `ui/widget.js` | Floating on-page assistant (closed shadow root) |
 | `shared/profile-schema.js` | Profile JSON Schema, defaults, validator, completeness |
 | `shared/ai.js` | Optional AI assist client (background only; Claude / OpenAI / Gemini / OpenAI-compatible) |
-| `options/` | Profile dashboard + AI profile builder |
+| `options/` | Profile dashboard, AI profile builder, applications tracker (`tracker.js`) |
 | `sidepanel/` | Quick access side panel (counter, autofill, save application, click-to-copy profile) |
 | `popup/` | Toolbar popup |
 | `ui/theme.css`, `ui/icons.js`, `icons/` | Shared styles, icons, extension icons |

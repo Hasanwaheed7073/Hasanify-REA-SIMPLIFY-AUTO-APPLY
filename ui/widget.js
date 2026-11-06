@@ -264,6 +264,7 @@
     .ps-fix:hover { background: var(--brand-ink); }
     .ps-go { color: var(--ink-2); background: transparent; border: 1px solid var(--line-2); }
     .ps-go:hover { border-color: var(--ink-2); color: var(--ink); }
+    .logged { margin-top: 12px; padding: 7px 0 7px 10px; border-left: 2px solid var(--ok); color: var(--ok); font-size: 12.5px; font-weight: 500; }
     .mode-note { margin-top: 6px; font-size: 11.5px; color: var(--muted); }
     .mode-note button { color: var(--brand); font-weight: 600; font-size: 11.5px; }
     .mode-note button:hover { text-decoration: underline; text-underline-offset: 2px; }
@@ -321,12 +322,13 @@
           </div>
 
           <div class="hidden" data-ref="uploadsWrap">
-            <div class="section-title">Attachments</div>
+            <div class="section-title"><span>Attachments</span> <span class="st-count" data-ref="uploadCount"></span></div>
             <div class="uploads" data-ref="uploads"></div>
             <div class="mode-note" data-ref="modeNote"></div>
             <input type="file" data-ref="picker" accept=".pdf,.doc,.docx,.txt,.rtf,.odt" hidden />
           </div>
 
+          <div class="logged hidden" data-ref="logged"></div>
           <div class="all-done hidden" data-ref="allDone"><span class="ico">${I.check}</span>Everything in your profile is filled. Read it over, then submit.</div>
 
           <div class="ai-note hidden" data-ref="aiNote"></div>
@@ -405,8 +407,8 @@
 
     const showResults = ui.hasRun && !ui.running;
     const pendingUploads = renderUploads(summary.uploads ?? [], showResults);
-    const pendingLearn = (summary.report ?? []).filter((r) => r.learn?.status === 'pending').length;
-    const todo = summary.attention.length + pendingUploads + pendingLearn + (summary.review ?? 0);
+    // The engine decides what "needs you" means (summary.todo); every count shown agrees with it.
+    const todo = summary.todo ?? pendingUploads;
     ref('stats').classList.toggle('hidden', !showResults);
     ref('filled').textContent = summary.filled;
     ref('todo').textContent = todo;
@@ -439,10 +441,12 @@
     const list = ref('attention');
     list.replaceChildren();
 
-    // Always show what needs action; collapse optional, untouched rows.
-    const important = rows.filter((r) => (r.required && !r.answered) || r.review || r.learn || r.answered);
-    const optional = rows.filter((r) => !important.includes(r));
-    const visible = ui.showAllMissed ? rows : [...important, ...optional.slice(0, Math.max(0, 6 - important.length))];
+    // Rows that need you first, then ones you've already handled; optional
+    // questions Hasanify didn't recognise stay folded (they don't count).
+    const needs = rows.filter((r) => r.action);
+    const handled = rows.filter((r) => !r.action && (r.answered || r.learn));
+    const optional = rows.filter((r) => !needs.includes(r) && !handled.includes(r));
+    const visible = ui.showAllMissed ? [...needs, ...handled, ...optional] : [...needs, ...handled];
 
     for (const r of visible) {
       const wrap = document.createElement('div');
@@ -486,14 +490,17 @@
       list.append(wrap);
     }
 
-    const hidden = rows.length - visible.length;
     const more = ref('reportMore');
-    more.classList.toggle('hidden', !hidden && !ui.showAllMissed);
-    more.textContent = ui.showAllMissed ? 'Show less' : `Show ${hidden} more optional field${hidden === 1 ? '' : 's'}`;
+    more.classList.toggle('hidden', !optional.length);
+    more.textContent = ui.showAllMissed ? 'Hide optional questions'
+      : `${optional.length} optional question${optional.length === 1 ? '' : 's'} Hasanify didn’t recognise — show`;
     more.onclick = () => { ui.showAllMissed = !ui.showAllMissed; render(); };
 
-    ref('reportCount').textContent = rows.length;
-    ref('reportTitle').textContent = rows.every((r) => r.review) ? 'Please check' : rows.some((r) => r.review) ? 'Check & finish' : 'Unfilled fields';
+    // Title count = the same "needs you" number as the stat above (uploads have their own card).
+    ref('reportCount').textContent = needs.length || (handled.length ? '' : optional.length);
+    ref('reportTitle').textContent = needs.length
+      ? (needs.every((r) => r.review) ? 'Please check' : 'Needs you')
+      : handled.length ? 'Handled' : 'Optional questions';
     const aiNote = ref('aiNote');
     aiNote.textContent = summary.aiNotice ? `AI assist: ${summary.aiNotice}` : '';
     aiNote.classList.toggle('hidden', !summary.aiNotice || !show);
@@ -572,6 +579,7 @@
     }
 
     ref('uploadsWrap').classList.toggle('hidden', !show || !uploads.length);
+    ref('uploadCount').textContent = pending || '';
     const note = ref('modeNote');
     note.innerHTML = `Resume: <b></b> · <button data-act="upload-settings">Change</button>`;
     note.querySelector('b').textContent = RESUME_MODE_LABEL[mode] ?? mode;
@@ -670,6 +678,13 @@
     if (jumpToFirst && first) first.click();
     ui.presubmit = null;
   }
+
+  // Tracker: the final Submit was recorded.
+  engine.events.addEventListener('application-logged', (e) => {
+    const el = ref('logged');
+    el.textContent = `Logged in your applications tracker${e.detail?.company ? ` — ${e.detail.company}` : ''}.`;
+    el.classList.remove('hidden');
+  });
 
   engine.events.addEventListener('uploads-changed', () => host.isConnected && render());
   engine.events.addEventListener('learning-changed', () => host.isConnected && render());

@@ -25,6 +25,7 @@
       </div>
 
       <nav class="nav" id="nav">
+        <a href="#applications" data-icon="file">Applications <em id="navFollowups"></em></a>
         <a href="#ai" data-icon="sparkles" class="nav-ai">AI profile builder</a>
         <a href="#personal" data-icon="user">Personal info</a>
         <a href="#links" data-icon="link">Links</a>
@@ -56,6 +57,55 @@
           <input type="file" id="importFile" accept="application/json" hidden />
         </div>
       </header>
+
+      <!-- Applications tracker -->
+      <section class="card" id="applications">
+        <div class="card-head row">
+          <div>
+            <h2>Applications</h2>
+            <p>Every application you submit on a form Hasanify filled is logged here automatically — company, role, link and the resume file you attached. Change the status as you hear back.</p>
+          </div>
+          <div class="head-actions">
+            <button class="btn btn-sm" id="appAddBtn">Add manually</button>
+            <button class="btn btn-sm" id="appExportBtn">Export CSV</button>
+          </div>
+        </div>
+
+        <div class="tally" id="appTally"></div>
+
+        <div class="subhead">Last 8 weeks</div>
+        <div class="weeks" id="appWeeks"></div>
+
+        <div id="appFollowWrap">
+          <div class="subhead">Follow up <span class="learn-stats" id="appFollowCount"></span></div>
+          <div class="followups" id="appFollowups"></div>
+        </div>
+
+        <div class="subhead">All applications <span class="learn-stats" id="appCount"></span></div>
+        <form class="app-add" id="appAddForm" hidden>
+          <input class="input" name="company" placeholder="Company" required />
+          <input class="input" name="title" placeholder="Role" />
+          <input class="input" name="url" placeholder="Job link (optional)" />
+          <select class="input" name="status">
+            <option value="applied">Applied</option><option value="saved">Saved</option><option value="interview">Interview</option>
+            <option value="offer">Offer</option><option value="rejected">Rejected</option><option value="withdrawn">Withdrawn</option>
+          </select>
+          <button class="btn btn-sm btn-primary" type="submit">Add</button>
+          <button class="btn btn-sm btn-ghost" type="button" id="appAddCancel">Cancel</button>
+        </form>
+        <div class="app-tools">
+          <div class="missed-filter" id="appFilter">
+            <button data-filter="all" aria-pressed="true">All</button>
+            <button data-filter="applied" aria-pressed="false">Applied</button>
+            <button data-filter="interview" aria-pressed="false">Interview</button>
+            <button data-filter="offer" aria-pressed="false">Offer</button>
+            <button data-filter="rejected" aria-pressed="false">Rejected</button>
+            <button data-filter="saved" aria-pressed="false">Saved</button>
+          </div>
+          <input class="input app-search" id="appSearch" type="search" placeholder="Search company or role" autocomplete="off" />
+        </div>
+        <div class="app-table" id="appTable" data-empty="No applications yet. Submit one on a form Hasanify filled, or add one by hand."></div>
+      </section>
 
       <!-- AI profile builder -->
       <section class="card ai-card" id="ai">
@@ -463,5 +513,6 @@
   <script src="ai-builder.js"></script>
   <script src="learning.js"></script>
   <script src="ai-settings.js"></script>
+  <script src="tracker.js"></script>
 </body>
 </html>

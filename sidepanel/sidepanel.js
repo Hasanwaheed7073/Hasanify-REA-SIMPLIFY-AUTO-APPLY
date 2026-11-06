@@ -120,7 +120,13 @@ function renderCounter() {
   const bar = $('goalBar');
   bar.style.width = `${Math.min(100, (n / goal) * 100)}%`;
   bar.classList.toggle('done', n >= goal);
+  // Tracker: follow-ups due (applied ≥ N days ago, no reply recorded)
+  const due = apps.filter((a) => a.status === 'applied' && a.followUpAt && !a.followedUpAt && a.followUpAt <= Date.now() + 86400000).length;
+  const line = $('followLine');
+  line.hidden = !due;
+  line.textContent = `${due} follow-up${due === 1 ? '' : 's'} due — open tracker`;
 }
+const STATUS_LABEL = { saved: 'Saved', applied: 'Applied', interview: 'Interview', offer: 'Offer', rejected: 'Rejected', withdrawn: 'Withdrawn' };
 
 function renderRecent() {
   const box = $('recent');
@@ -140,8 +146,9 @@ function renderRecent() {
     row.querySelector('b').textContent = a.title || a.url;
     row.querySelector('.app-txt span').textContent = `${a.company || ''}${a.company ? ' · ' : ''}${new Date(a.savedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
     const pill = row.querySelector('.pill');
-    pill.textContent = a.status === 'applied' ? 'Applied' : 'Saved';
-    pill.classList.toggle('saved', a.status !== 'applied');
+    pill.textContent = STATUS_LABEL[a.status] ?? 'Applied';
+    pill.classList.toggle('saved', a.status === 'saved');
+    pill.classList.toggle('closed', a.status === 'rejected' || a.status === 'withdrawn');
     box.append(row);
   }
 }
@@ -159,7 +166,12 @@ async function saveApplication(status) {
   entry.title = $('saveTitle').value.trim() || pageInfo.title;
   entry.company = $('saveCompany').value.trim() || pageInfo.company;
   entry.ats = pageInfo.ats;
-  if (status === 'applied' && entry.status !== 'applied') entry.appliedAt = now;
+  if (status === 'applied' && entry.status !== 'applied') {
+    entry.appliedAt = now;
+    entry.followUpAt ??= now + Math.max(1, Number(settings.followUpDays) || 7) * 86400000;
+    (entry.history ??= []).push({ status: 'applied', at: now, by: 'you' });
+  }
+  entry.source ??= 'manual';
   entry.status = status === 'applied' ? 'applied' : entry.status ?? 'saved';
   if (!existing) apps.push(entry);
   await chrome.storage.local.set({ [KEYS.apps]: apps });
@@ -360,6 +372,7 @@ function openDashboard(hash) {
   $('openDashboard').addEventListener('click', () => openDashboard());
   $('editProfile').addEventListener('click', () => openDashboard());
   $('createProfile').addEventListener('click', () => openDashboard('ai'));
+  $('followLine').addEventListener('click', () => openDashboard('applications'));
   $('search').addEventListener('input', renderProfile);
   $('markApplied').addEventListener('click', () => saveApplication('applied'));
   $('saveLater').addEventListener('click', () => saveApplication('saved'));

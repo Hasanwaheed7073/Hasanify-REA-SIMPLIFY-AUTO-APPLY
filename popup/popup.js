@@ -23,7 +23,7 @@ function showResults(stats) {
   if (!stats || !stats.total) return;
   $('results').classList.remove('hidden');
   $('filled').textContent = stats.filled;
-  $('todo').textContent = Math.max(0, stats.matched - stats.filled) + (stats.unmatched?.length ?? 0);
+  $('todo').textContent = stats.todo ?? 0; // the same "needs you" count as the on-page assistant
   $('fillText').textContent = 'Autofill again';
 }
 
