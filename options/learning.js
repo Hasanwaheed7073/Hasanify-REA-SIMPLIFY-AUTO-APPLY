@@ -42,7 +42,7 @@
     const list = $('#missedList');
     list.dataset.empty = filter === 'learned'
       ? 'Nothing learned yet — answer a missed question below or on an application.'
-      : rows.length ? 'All caught up — every missed question has an answer. 🎉' : 'No missed questions yet. They appear here after you autofill applications.';
+      : rows.length ? 'Nothing left to answer. Every missed question has a saved answer.' : 'No missed questions yet. They appear here after you autofill applications.';
     list.replaceChildren();
 
     for (const r of shown) {

@@ -79,7 +79,7 @@ $('fill').addEventListener('click', async () => {
   }
   showResults(res.stats);
   $('heroSub').textContent = res.stats.filled
-    ? 'Done! Review the highlighted fields before submitting.'
+    ? 'Filled. Check the highlighted fields before you submit.'
     : 'No fillable fields found on this page.';
 });
 

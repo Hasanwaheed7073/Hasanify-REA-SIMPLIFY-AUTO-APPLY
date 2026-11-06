@@ -5,63 +5,60 @@
   <title>Hasanify</title>
   <link rel="stylesheet" href="../ui/theme.css" />
   <style>
-    body { width: 360px; background: #fff; }
-    .top { display: flex; align-items: center; gap: 10px; padding: 14px 14px 12px 16px; }
-    .top img { border-radius: 8px; }
-    .top b { font-size: 16px; letter-spacing: -.02em; flex: 1; }
-    .icon-btn { width: 32px; height: 32px; border: 0; border-radius: 9px; background: none; color: var(--muted); display: grid; place-items: center; }
+    body { width: 360px; }
+    .top { display: flex; align-items: center; gap: 10px; padding: 14px 14px 11px 16px; border-bottom: 2px solid var(--ink); margin: 0 0 0; }
+    .top img { border-radius: 3px; }
+    .top b { font: 600 19px var(--serif); letter-spacing: -.01em; flex: 1; }
+    .icon-btn { width: 30px; height: 30px; border: 0; border-radius: 3px; background: none; color: var(--muted); display: grid; place-items: center; transition: background .15s, color .15s; }
     .icon-btn:hover { background: var(--soft); color: var(--ink); }
-    .icon-btn svg { width: 18px; height: 18px; }
+    .icon-btn svg { width: 17px; height: 17px; }
 
-    .hero { margin: 0 14px; padding: 16px; border-radius: 16px; color: #fff; position: relative; overflow: hidden;
-      background: radial-gradient(120% 140% at 100% 0%, #8B5CF6 0%, #5B5BF7 45%, #3B3BC4 100%); }
-    .hero::after { content: ""; position: absolute; right: -40px; bottom: -60px; width: 160px; height: 160px; border-radius: 50%;
-      background: rgba(255,255,255,.08); }
-    .status { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 8px; border-radius: 99px;
-      background: rgba(255,255,255,.16); font-size: 11.5px; font-weight: 600; }
-    .status i { width: 7px; height: 7px; border-radius: 50%; background: #A7F3D0; box-shadow: 0 0 0 3px rgba(167,243,208,.25); }
-    .status.off i { background: #CBD5E1; box-shadow: none; }
-    .hero h2 { margin: 10px 0 2px; font-size: 17px; letter-spacing: -.015em; line-height: 1.3; position: relative; z-index: 1; }
-    .hero p { margin: 0; font-size: 12.5px; opacity: .85; position: relative; z-index: 1; }
-    .fill { position: relative; z-index: 1; margin-top: 14px; width: 100%; height: 44px; border: 0; border-radius: 12px;
-      background: #fff; color: #3B3BC4; font-weight: 700; font-size: 14.5px; display: flex; align-items: center; justify-content: center; gap: 8px;
-      box-shadow: 0 6px 16px -6px rgba(0,0,0,.35); transition: transform .1s, box-shadow .15s; }
-    .fill:hover { box-shadow: 0 10px 22px -8px rgba(0,0,0,.4); }
+    /* "hero": the page you're on, as a ruled entry — no gradient */
+    .hero { margin: 0 16px; padding: 14px 0 16px; border-bottom: 1px solid var(--line-2); }
+    .status { display: inline-flex; align-items: center; gap: 7px; font: 500 11.5px var(--mono); color: var(--ok); }
+    .status i { width: 7px; height: 7px; border-radius: 1px; background: currentColor; }
+    .status.off { color: var(--muted); }
+    .hero h2 { margin: 8px 0 2px; font-size: 21px; letter-spacing: -.01em; line-height: 1.2; }
+    .hero p { margin: 0; font-size: 12.5px; color: var(--muted); }
+    .fill { margin-top: 14px; width: 100%; height: 40px; border: 1px solid var(--brand); border-radius: 4px;
+      background: var(--brand); color: #FBF6EF; font-weight: 650; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;
+      transition: background .15s, border-color .15s, transform .1s; }
+    .fill:hover { background: var(--brand-ink); border-color: var(--brand-ink); }
     .fill:active { transform: translateY(1px); }
-    .fill:disabled { opacity: .75; cursor: default; }
-    .fill svg { width: 17px; height: 17px; }
+    .fill:disabled { opacity: .6; cursor: default; transform: none; }
+    .fill svg { width: 16px; height: 16px; }
 
-    .quick { position: relative; z-index: 1; margin-top: 8px; width: 100%; height: 38px; border-radius: 11px;
-      border: 1px solid rgba(255,255,255,.35); background: rgba(255,255,255,.12); color: #fff; font-weight: 600; font-size: 13px;
-      display: flex; align-items: center; justify-content: center; gap: 8px; transition: background .15s; }
-    .quick:hover { background: rgba(255,255,255,.2); }
+    .quick { margin-top: 8px; width: 100%; height: 36px; border-radius: 4px; border: 1px solid var(--line-2); background: var(--sheet); color: var(--ink);
+      font-weight: 600; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background .15s, border-color .15s; }
+    .quick:hover { background: #fff; border-color: var(--ink-2); }
     .quick:disabled { opacity: .6; cursor: default; }
     .quick svg { width: 15px; height: 15px; }
-    .quick kbd { font: 600 10.5px var(--font); padding: 2px 6px; border-radius: 5px; background: rgba(255,255,255,.18); opacity: .9; }
-    .results { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 14px 0; }
+    .quick kbd { font: 500 10.5px var(--mono); padding: 1px 5px; border-radius: 2px; border: 1px solid var(--line-2); color: var(--muted); background: var(--paper); }
+    .results { display: grid; grid-template-columns: 1fr 1fr; margin: 0 16px; border-bottom: 1px solid var(--line-2); }
     .results.hidden { display: none; }
-    .res { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
-    .res b { font-size: 20px; letter-spacing: -.02em; display: block; line-height: 1.2; }
-    .res span { font-size: 12px; color: var(--muted); }
-    .res.ok b { color: #039855; }
-    .res.warn b { color: var(--warn); }
+    .res { padding: 10px 0 12px; }
+    .res + .res { border-left: 1px solid var(--line); padding-left: 14px; }
+    .res b { font: 600 26px/1.1 var(--serif); letter-spacing: -.02em; display: block; }
+    .res span { font: 11.5px var(--mono); color: var(--muted); }
+    .res.ok b { color: var(--ok); }
+    .res.warn b { color: var(--brand); }
 
-    .profile { display: flex; align-items: center; gap: 12px; margin: 12px 14px 0; padding: 12px; border-radius: 14px;
-      border: 1px solid var(--line); text-decoration: none; color: inherit; cursor: pointer; transition: background .12s; }
-    .profile:hover { background: var(--soft); }
+    .profile { display: flex; align-items: center; gap: 12px; margin: 0 16px; padding: 12px 0; border-bottom: 1px solid var(--line-2);
+      text-decoration: none; color: inherit; cursor: pointer; transition: background .15s; }
+    .profile:hover .txt b { text-decoration: underline; text-underline-offset: 3px; }
     .profile .txt { flex: 1; min-width: 0; }
     .profile .txt b { display: block; font-size: 13.5px; }
     .profile .txt span { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .chev { width: 18px; height: 18px; color: var(--faint); }
+    .chev { width: 16px; height: 16px; color: var(--faint); }
 
-    .settings { margin: 12px 14px 0; padding: 4px 14px; border-radius: 14px; background: var(--soft); }
-    .settings .switch-row { padding: 11px 0; border-color: #E4E6EE; }
-    .settings .switch-row:first-child { padding-top: 11px; }
-    .settings .switch-row b { font-size: 13px; }
+    .settings { margin: 0 16px; padding: 2px 0; }
+    .settings .switch-row { padding: 10px 0; }
+    .settings .switch-row:first-child { padding-top: 10px; border-top: 0; }
+    .settings .switch-row b { font-size: 13px; font-weight: 500; }
 
-    .foot { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px 14px; font-size: 12px; color: var(--faint); }
-    .foot a { color: var(--brand); font-weight: 600; text-decoration: none; cursor: pointer; }
-    .foot a:hover { text-decoration: underline; }
+    .foot { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px 13px; border-top: 1px solid var(--line-2); font: 11.5px var(--mono); color: var(--faint); }
+    .foot a { color: var(--brand); font: 600 12.5px var(--font); text-decoration: none; cursor: pointer; }
+    .foot a:hover { text-decoration: underline; text-underline-offset: 3px; }
   </style>
 </head>
 <body>

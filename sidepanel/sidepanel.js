@@ -163,7 +163,7 @@ async function saveApplication(status) {
   entry.status = status === 'applied' ? 'applied' : entry.status ?? 'saved';
   if (!existing) apps.push(entry);
   await chrome.storage.local.set({ [KEYS.apps]: apps });
-  $('saveNote').textContent = status === 'applied' ? `Marked as applied${existing ? ' (updated)' : ''} 🎉` : 'Saved for later';
+  $('saveNote').textContent = status === 'applied' ? `Marked as applied${existing ? ' (updated)' : ''}` : 'Saved for later';
   $('saveNote').className = 'note ok';
 }
 

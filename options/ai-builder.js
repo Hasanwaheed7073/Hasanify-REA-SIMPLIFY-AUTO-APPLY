@@ -386,7 +386,7 @@ Start now: read my attached documents. If I haven't attached any yet, ask me to 
       await copyText(el('aiPrompt').textContent);
       const btn = el('copyPrompt');
       btn.classList.add('copied');
-      btn.querySelector('span').textContent = 'Copied!';
+      btn.querySelector('span').textContent = 'Copied';
       toast('Prompt copied — paste it into your AI with your documents');
       setTimeout(() => { btn.classList.remove('copied'); btn.querySelector('span').textContent = 'Copy prompt'; }, 2200);
     });
@@ -415,7 +415,7 @@ Start now: read my attached documents. If I haven't attached any yet, ask me to 
       if (!pending) return;
       const res = await send('hasanify:saveProfile', { profile: pending.merged });
       if (!res?.ok) return setStatus(`Import failed: ${(res?.errors ?? [res?.error]).slice(0, 2).join('; ')}`, true);
-      sessionStorage.setItem('hasanify.flash', 'Profile imported from AI 🎉');
+      sessionStorage.setItem('hasanify.flash', 'Profile imported');
       location.hash = '#personal';
       location.reload();
     });

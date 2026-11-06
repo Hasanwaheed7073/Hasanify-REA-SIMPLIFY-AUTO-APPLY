@@ -69,7 +69,7 @@ function updateCompleteness() {
   $('#completenessTitle').textContent = percent === 100 ? 'Profile complete' : percent >= 70 ? 'Almost there' : 'Profile strength';
   $('#completenessHint').textContent = missing.length ? `Add ${missing.slice(0, 2).join(' & ').toLowerCase()} to fill more fields` : 'Ready to autofill everything';
   const name = profile.personal.firstName;
-  $('#greeting').textContent = name ? `Hi ${name} 👋` : 'Your profile';
+  $("#greeting").textContent = name ? `${name}’s application profile` : "Your application profile";
 }
 
 // ── Simple bound inputs: [data-path] ─────────────────────────────────────
